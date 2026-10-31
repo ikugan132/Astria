@@ -57,7 +57,13 @@ async function documents(){return app.evaluate(async({webContents})=>Promise.all
  await page.evaluate(()=>window.multiNest.accountDelete('c'));const promoted=await state();assert.ok(!promoted.workspaces[0].floating.some(p=>p.accountId===promoted.selectedAccountId),'promoted main is removed from floating slots');
  const last=promoted.workspaces[0].floating.at(-1).accountId;await (await helper(last)).locator('#card').click({position:{x:65,y:60}});await until(async()=>(await state()).selectedAccountId===last,'swap after deleting main');assert.equal(new Set((await state()).workspaces[0].floating.map(p=>p.accountId)).size,4,'swap retains four distinct slots');
  const dormant=(await state()).workspaces[0].floating;await page.evaluate(async()=>{await window.multiNest.workspaceLayout('focus');await window.multiNest.workspaceSelect('other');await window.multiNest.workspaceSelect('games');});assert.deepEqual((await state()).workspaces[0].floating,dormant,'inactive floating settings survive focus-layout workspace reentry');
- await page.evaluate(()=>window.multiNest.workspaceLayout('floating'));assert.deepEqual((await state()).workspaces[0].floating,dormant,'restoring Floating retains every saved slot');
+ const previousMain=(await state()).selectedAccountId;await page.evaluate(()=>window.multiNest.workspaceLayout('floating'));
+ await app.evaluate(({ipcMain,BaseWindow},id)=>{
+   const w=BaseWindow.getAllWindows()[0],ui=w.webContents,old=w.contentView.children.find(v=>v.webContents?.getURL().endsWith('id='+id));
+   ipcMain.emit('layout:update',{sender:ui,senderFrame:ui.mainFrame},[{id,x:160,y:80,width:900,height:600}]);
+   old?.webContents.emit('focus');
+ },previousMain);
+ assert.deepEqual((await state()).workspaces[0].floating,dormant,'stale focus-layout rectangles cannot reselect the old main or alter saved slots');
  await page.evaluate(()=>window.multiNest.floatingAccounts([]));await until(async()=>(await layers()).every(v=>!v.url.endsWith('/floating.html')),'empty selection releases helpers');assert.deepEqual((await state()).workspaces[0].floating,[]);
  await page.evaluate(()=>window.multiNest.workspaceLayout('focus'));
  await app.close();const legacy=JSON.parse(fs.readFileSync(path.join(profile,'config.json'),'utf8'));legacy.selectedAccountId='a';legacy.activeWorkspaceId='games';legacy.workspaces[0].layout='floating';legacy.workspaces[0].floating={accountId:'b',x:.3,y:.4,width:.25,pinned:true};legacy.accounts.find(a=>a.id==='b').activity='suspended';fs.writeFileSync(path.join(profile,'config.json'),JSON.stringify(legacy));

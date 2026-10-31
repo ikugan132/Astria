@@ -1216,7 +1216,12 @@ function registerIPC() {
   ipcMain.on('layout:update', (event, rects) => {
     if (!trustedSender(event)) return;
     if (!Array.isArray(rects) || !windowMain || windowMain.isDestroyed()) return;
-    const ids = new Set(currentAccounts().map(a => a.id));
+    const workspace=state.workspaces.find(w=>w.id===state.activeWorkspaceId),accounts=currentAccounts();
+    const primary=state.ultraAccountId||state.selectedAccountId||accounts[0]?.id;
+    const single=!!state.ultraAccountId||['focus','floating'].includes(workspace.layout);
+    const ids = new Set(accounts.filter(a=>!single||a.id===primary).map(a => a.id));
+    // A late layout from the previous main must not raise and focus that old game.
+    if(rects.length&&!rects.some(rect=>ids.has(rect?.id)))return;
     boundsForAccounts.clear();
     const [ww, wh] = windowMain.getContentSize();
     for (const rect of rects.slice(0, 300)) {
