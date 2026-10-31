@@ -79,7 +79,7 @@ Left-clicking an account's color selects the account, including with the sidebar
 
 Open an account's **Automation** button, or right-click it and choose **Auto Clicker…** / **Macro Maker…**. These are separate tools:
 
-- **Auto Clicker:** add targets, choose their points on the game page, select a mouse button or keyboard input, set each interval, then start. A faint crosshair shows each target and the time until its next action. Preview temporarily uncovers the game. Inputs stay in that account; the Windows cursor remains free.
+- **Auto Clicker:** add targets, choose their points on the game page, select a mouse button or keyboard input, set each interval, then start. Each point can show a circle at 50% opacity, red by default, with a color picker. Turn off **Show circle** to keep the actions running without any marker. Markers have no name, crosshair or countdown. Preview temporarily uncovers the game. Inputs stay in that account; the Windows cursor remains free.
 - **Macro Maker:** create ordered key, mouse, move, scroll, text and wait steps; configure start/repeat delays, run once or repeat, and import/export version-2 Macro Maker JSON files.
 
 Targets use account-page coordinates and scale with floating windows, fixed resolutions and zoom. They follow the account when swapping floating/main views. If the game rearranges its controls, choose the point again. Clicking to choose a point does not click the game. Esc or right-click cancels selection.

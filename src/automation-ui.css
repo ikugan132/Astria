@@ -25,6 +25,10 @@
 .automation-buttons{display:flex;flex-wrap:wrap;gap:8px}
 .automation-buttons button{min-height:34px;padding:7px 11px}
 .automation-point{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:10px 0 12px}
+.automation-marker-options{display:flex;align-items:center;flex-wrap:wrap;gap:12px 24px}
+.automation-marker-options .field{display:flex;align-items:center;gap:10px}
+.automation-marker-options label{margin:0}
+.automation-marker-options input[type=color]{width:48px;padding:3px;cursor:pointer}
 .automation-target-list{display:flex;flex-direction:column;gap:4px;max-height:155px;overflow:auto;margin-bottom:12px;padding:3px}
 .automation-target-row{display:flex;align-items:center;gap:8px}
 .automation-target-row>.automation-check{margin:0;padding:8px 2px}

@@ -983,9 +983,11 @@ function registerIPC() {
   listen('automation:pick',pickAutomationPoint);
   listen('automation:preview',(id,value)=>{
     const a=accountById(id),point=automationPoint(value),view=views.get(id);
+    const markerColor=normalizeColor(value.markerColor === undefined ? '#ff0000' : value.markerColor);
+    if(!markerColor)throw Error(T('Cor inválida.'));
     if(!view?.rendererReady)throw Error(T('Aguarde o carregamento da página.'));
     state.activeWorkspaceId=a.workspaceId;selectAccountState(id);requestAccountFocus();publish();
-    view.webContents.send('astria:automation-preview',{point,label:T('Alvo')});return {ok:true};
+    view.webContents.send('astria:automation-preview',{point,markerColor});return {ok:true};
   });
   listen('automation:import',async id=>{
     accountById(id);const result=await dialog.showOpenDialog(windowMain,{title:T('Importar macro'),properties:['openFile'],filters:[{name:'Macro Maker JSON',extensions:['json']}]});

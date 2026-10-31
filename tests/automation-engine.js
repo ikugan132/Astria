@@ -82,6 +82,23 @@ test('normalized points retain precision at the right and bottom viewport edges'
   assert.equal(clean.y, .123456789);
 });
 
+test('marker options default to visible red and reject invalid colors or visibility', () => {
+  const original = target('old');
+  const clean = normalizeSettings({ targets: [original] }).targets[0];
+  assert.equal(clean.showMarker, true, 'existing saved targets receive the new default');
+  assert.equal(clean.markerColor, '#ff0000');
+  const custom = normalizeSettings({ targets: [{ ...original, showMarker: false, markerColor: '#12AbEf' }] }).targets[0];
+  assert.equal(custom.showMarker, false);
+  assert.equal(custom.markerColor, '#12abef');
+  assert.equal(custom.enabled, true, 'hiding a marker does not disable its target');
+  for (const markerColor of [null, 123, '#fff', 'red', '#ff0000;display:none', '#GG0000']) {
+    assert.throws(() => normalizeSettings({ targets: [{ ...original, markerColor }] }), /color/i);
+  }
+  for (const showMarker of [null, 0, 'false']) {
+    assert.throws(() => normalizeSettings({ targets: [{ ...original, showMarker }] }), /marker/i);
+  }
+});
+
 test('settings reject macro and target IDs that could alter selectors or paths', () => {
   for (const id of ['bad"id', 'bad\'id', '../macro', 'path\\target', '#selector', 'spaced id', 'under_score', ' padded ']) {
     assert.throws(() => normalizeSettings({ targets: [{ ...target('one'), id }] }), /ID/);
@@ -358,7 +375,7 @@ test('clicker targets have independent countdowns, resize with the logical viewp
   const driver = await createDriver(p);
   const controller = new AbortController();
   const states = [];
-  const items = [target('fast'), target('slow', .12, { type: 'key', key: 'F1', mods: [] }), { ...target('disabled'), enabled: false }];
+  const items = [{ ...target('fast'), showMarker: false }, { ...target('slow', .12, { type: 'key', key: 'F1', mods: [] }), markerColor: '#00ff00' }, { ...target('disabled'), enabled: false }];
   const stop = setTimeout(() => controller.abort(), 285);
   await runClicker(items, { driver, signal: controller.signal, onState: s => { states.push(s); p.viewport = [400, 200]; } });
   clearTimeout(stop);
@@ -371,6 +388,8 @@ test('clicker targets have independent countdowns, resize with the logical viewp
   const first = states.find(s => s.targets?.length);
   assert.deepEqual(first.targets.map(t => t.id), ['fast', 'slow']);
   assert.ok(first.targets[1].nextAt - first.targets[0].nextAt >= 60);
+  assert.equal(first.targets[0].showMarker, false, 'hidden target still runs on its own interval');
+  assert.equal(first.targets[1].markerColor, '#00ff00');
   const count = events.length;
   await sleep(60);
   assert.equal(input(p).length, count);

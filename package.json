@@ -1,7 +1,7 @@
 {
   "name": "astria",
   "productName": "Astria",
-  "version": "1.10.0",
+  "version": "1.10.1",
   "description": "Portable multi-account browser for browser games, with isolated sessions and a compact interface.",
   "main": "src/main.js",
   "private": true,

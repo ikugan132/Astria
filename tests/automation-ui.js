@@ -70,8 +70,12 @@ async function click(action, data = {}) {
   await ui.open(options);
   assert.match(markup, /role="tablist"/);
   assert.match(markup, /&lt;Account&gt;/);
+  assert.match(markup, /type="color"[^>]*value="#ff0000"/);
+  assert.match(markup, /data-field="showMarker" checked/);
   input('target', 'name', '<Draft>');
   input('target', 'interval', 1.25, 'number');
+  input('target', 'markerColor', '#12abef', 'color');
+  input('target', 'showMarker', false, 'checkbox');
   const beforeEvent = draws;
   listener({ id: 'other-account', runtime: { running: true } });
   listener({ id: 'account-one', runtime: { running: true, kind: 'clicker', cycle: 2 } });
@@ -88,6 +92,7 @@ async function click(action, data = {}) {
   assert.match(markup, /&lt;Draft&gt;/);
   assert.match(markup, /value="1.25"/);
   assert.equal(previewPoints[0].x, 0.75);
+  assert.equal(previewPoints[0].markerColor, '#12abef', 'explicit preview uses the chosen color');
   assert.deepEqual(previewDelays, [1600]);
   assert.equal(saved, undefined, 'preview never saves or sends input');
   assert.equal(started, undefined);
@@ -97,9 +102,13 @@ async function click(action, data = {}) {
   await click('start');
   assert.equal(saved.targets[0].name, '<Draft>');
   assert.equal(saved.targets[0].point.x, 0.75);
+  assert.equal(saved.targets[0].markerColor, '#12abef');
+  assert.equal(saved.targets[0].showMarker, false, 'marker visibility is independent of starting inputs');
   assert.deepEqual(saved.targets[0].action, { type: 'key', key: 'F10', mods: ['Ctrl'] }, 'action keys are not reserved hotkeys');
   assert.deepEqual(started, { kind: 'clicker' });
   await click('add-target');
+  assert.match(markup, /type="color"[^>]*value="#ff0000"/);
+  assert.match(markup, /data-field="showMarker" checked/);
   pickResult = { ok: true, cancelled: true };
   await click('pick-target');
   await click('save');

@@ -71,7 +71,7 @@
     function targetEditor() {
       const item = target();
       if (!item) return `<p class="small-note automation-empty">${t('Adicione um alvo e escolha um ponto na página do jogo.')}</p>`;
-      return `<div class="automation-grid">${field('target', 'name', 'Nome do alvo', item.name, { type: 'text' })}${field('target', 'interval', 'Intervalo (s)', item.interval, { min: 0.05 })}</div>${check('target', 'enabled', 'Alvo ativado', item.enabled)}${select('action', 'type', 'Entrada enviada ao ponto', item.action.type, [['mouse', 'Clique do mouse'], ['key', 'Tecla']])}${item.action.type === 'key' ? combo('action', item.action) : select('action', 'button', 'Botão', item.action.button, [['left', 'Esquerdo'], ['right', 'Direito'], ['middle', 'Do meio']])}${pointControls('target', item.point)}<p class="small-note">${t('Cada alvo tem seu próprio intervalo. A entrada é enviada ao ponto da página, sem mover o mouse do computador.')}</p>`;
+      return `<div class="automation-grid">${field('target', 'name', 'Nome do alvo', item.name, { type: 'text' })}${field('target', 'interval', 'Intervalo (s)', item.interval, { min: 0.05 })}</div>${check('target', 'enabled', 'Alvo ativado', item.enabled)}${select('action', 'type', 'Entrada enviada ao ponto', item.action.type, [['mouse', 'Clique do mouse'], ['key', 'Tecla']])}${item.action.type === 'key' ? combo('action', item.action) : select('action', 'button', 'Botão', item.action.button, [['left', 'Esquerdo'], ['right', 'Direito'], ['middle', 'Do meio']])}${pointControls('target', item.point)}<div class="automation-marker-options">${check('target', 'showMarker', 'Mostrar círculo', item.showMarker !== false)}<div class="field"><label for="automation-target-markerColor">${t('Cor do círculo')}</label><input id="automation-target-markerColor" data-scope="target" data-field="markerColor" type="color" value="${esc(item.markerColor || '#ff0000')}"></div></div><p class="small-note">${t('Círculo com 50% de opacidade. Ocultar não interrompe as ações.')}</p><p class="small-note">${t('Cada alvo tem seu próprio intervalo. A entrada é enviada ao ponto da página, sem mover o mouse do computador.')}</p>`;
     }
     function clickerPanel() {
       return `<div class="automation-toolbar"><h3>${t('Alvos independentes')}</h3>${button('add-target', 'Adicionar alvo', 'secondary', settings.targets.length >= 100 ? 'disabled' : '')}</div><div class="automation-target-list">${settings.targets.map(item => `<div class="automation-target-row"><label class="automation-check"><input type="checkbox" data-target-enable="${esc(item.id)}" aria-label="${t('Ativar alvo')}: ${esc(item.name)}"${item.enabled ? ' checked' : ''}></label><button type="button" class="automation-target${targetId === item.id ? ' selected' : ''}" data-do="select-target" data-id="${esc(item.id)}" aria-pressed="${targetId === item.id}"><span data-target-name="${esc(item.id)}">${esc(item.name)}</span><small>${esc(item.interval)} s · ${t(item.action.type === 'key' ? 'Tecla' : 'Clique')}</small></button></div>`).join('')}</div><div class="automation-editor">${targetEditor()}${target() ? `<div class="automation-delete">${button('delete-target', 'Remover alvo', 'danger')}</div>` : ''}</div>`;
@@ -226,7 +226,7 @@
       picking = true;
       closeModal();
       try {
-        await call('automationPreview', point);
+        await call('automationPreview', scope === 'target' ? { ...point, markerColor: target().markerColor || '#ff0000' } : point);
         await new Promise(resolve => root.setTimeout(resolve, 1600));
       } finally {
         picking = false;
@@ -240,7 +240,7 @@
         case 'select-target': targetId = node.dataset.id; show('[data-do="select-target"].selected'); return;
         case 'add-target': {
           if (settings.targets.length >= 100) return;
-          const item = { id: uid(), name: tr('Alvo') + ' ' + (settings.targets.length + 1), enabled: true, interval: 5, action: { type: 'mouse', button: 'left' }, point: null };
+          const item = { id: uid(), name: tr('Alvo') + ' ' + (settings.targets.length + 1), enabled: true, showMarker: true, markerColor: '#ff0000', interval: 5, action: { type: 'mouse', button: 'left' }, point: null };
           settings.targets.push(item); targetId = item.id; changed(); show('#automation-target-name'); return;
         }
         case 'delete-target': {

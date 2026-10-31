@@ -52,7 +52,11 @@ function normalizeSettings(raw = {}) {
     else if (action.type === 'mouse' && ['left', 'right', 'middle'].includes(action.button)) clean = { type: 'mouse', button: action.button };
     else throw new Error('Invalid clicker action.');
     if (value.enabled !== undefined && typeof value.enabled !== 'boolean') throw new Error('Enabled must be boolean.');
+    if (value.showMarker !== undefined && typeof value.showMarker !== 'boolean') throw new Error('Show marker must be boolean.');
+    const markerColor = value.markerColor === undefined ? '#ff0000' : value.markerColor;
+    if (typeof markerColor !== 'string' || !/^#[a-f\d]{6}$/i.test(markerColor)) throw new Error('Invalid marker color.');
     return { id: value.id, name: value.name, enabled: value.enabled !== false,
+      showMarker: value.showMarker !== false, markerColor: markerColor.toLowerCase(),
       interval: core.parseNum(value.interval ?? 5, 'Interval', .05, 86400), action: clean, point: point(value.point) };
   });
   const result = { macros, targets };
@@ -329,7 +333,7 @@ async function runClicker(targets, options) {
     const now = Date.now();
     const active = normalizeSettings({ targets }).targets.filter(t => t.enabled).map(t => ({ ...t, nextAt: now + t.interval * 1000 }));
     if (!active.length) throw new Error('Add an enabled clicker target first.');
-    const report = () => onState?.({ phase: 'running', targets: active.map(t => ({ id: t.id, point: { ...t.point }, nextAt: t.nextAt, label: t.name })) });
+    const report = () => onState?.({ phase: 'running', targets: active.map(t => ({ id: t.id, point: { ...t.point }, nextAt: t.nextAt, showMarker: t.showMarker, markerColor: t.markerColor })) });
     report();
     while (true) {
       checkAbort(signal);

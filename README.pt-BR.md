@@ -79,7 +79,7 @@ O clique esquerdo na cor seleciona a conta, inclusive com a lateral recolhida. P
 
 Abra o botão **Automação** da conta ou clique nela com o botão direito e escolha **Auto Clicker…** / **Macro Maker…**. São ferramentas separadas:
 
-- **Auto Clicker:** adicione alvos, marque os pontos na página do jogo, escolha o botão do mouse ou entrada de teclado e o intervalo de cada alvo. Uma mira discreta mostra o alvo e a contagem para a próxima ação. A prévia mostra o jogo temporariamente. As entradas ficam naquela conta e o cursor do Windows continua livre.
+- **Auto Clicker:** adicione alvos, marque os pontos na página do jogo, escolha o botão do mouse ou entrada de teclado e o intervalo de cada alvo. Cada ponto pode mostrar um círculo com 50% de opacidade, vermelho por padrão, com escolha de cor. Desative **Mostrar círculo** para manter as ações funcionando sem nenhuma marca. Os marcadores não têm nome, mira nem contagem. A prévia mostra o jogo temporariamente. As entradas ficam naquela conta e o cursor do Windows continua livre.
 - **Macro Maker:** organize passos de tecla, clique, movimento, rolagem, texto e espera; configure pausas e repetições, execute uma vez ou em ciclos e importe/exporte arquivos JSON do Macro Maker versão 2.
 
 Os pontos pertencem à página da conta e acompanham as janelas flutuantes, a resolução fixa, o zoom e as trocas com a principal. Se o jogo reorganizar os controles, marque novamente. Clicar para escolher o ponto não clica no jogo. Esc ou botão direito cancelam a seleção.
