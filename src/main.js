@@ -487,7 +487,8 @@ function refreshViews() {
       if (floatingSize) view.floatingArea = frame.area;
       if (panel) applyResolution(view,account,panel);
     }
-    const throttled = !(backgroundMode(modeFor(account)) || state.preferences.visualRest || state.ultraAccountId) || !windowVisible;
+    const automating=automation?.runs.has(account.id);
+    const throttled = !automating && (!(backgroundMode(modeFor(account)) || state.preferences.visualRest || state.ultraAccountId) || !windowVisible);
     if (view.throttled !== throttled) {
       view.webContents.setBackgroundThrottling(throttled);
       view.throttled = throttled;
@@ -502,7 +503,7 @@ function refreshViews() {
       setStatus(account.id, { queued: false, sleeping: true, loading: false, error: '' });
       continue;
     }
-    if (backgroundMode(mode) || onScreen || ((state.preferences.visualRest || state.ultraAccountId) && views.has(account.id))) {
+    if (backgroundMode(mode) || onScreen || automation?.runs.has(account.id) || ((state.preferences.visualRest || state.ultraAccountId) && views.has(account.id))) {
       clearTimeout(idleTimers.get(account.id)); idleTimers.delete(account.id);
       const view = views.get(account.id);
       if (!view) {
@@ -1340,7 +1341,8 @@ if (ownsInstance) app.whenReady().then(() => {
   state = loadState();
   automation=new Automation({directory:path.join(storage.root||app.getPath('userData'),'Automation'),account:accountById,view:id=>views.get(id),notify:(id,runtime)=>{
     if(windowMain&&!windowMain.isDestroyed())windowMain.webContents.send('automation:state',{id,runtime});
-    const contents=views.get(id)?.webContents;if(contents&&!contents.isDestroyed())contents.send('astria:automation',runtime);
+    const view=views.get(id),contents=view?.webContents;if(contents&&!contents.isDestroyed())contents.send('astria:automation',runtime);
+    if(view&&view.automating!==runtime.running){view.automating=runtime.running;refreshViews();}
   }});
   requestAccountFocus();
   Menu.setApplicationMenu(null);
