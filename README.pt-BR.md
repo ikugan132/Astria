@@ -6,7 +6,7 @@ Navegador compacto e portátil de múltiplas contas para **jogos de navegador** 
 
 ## Baixar e abrir
 
-**[Baixe o ZIP portátil mais recente](https://github.com/IgorKugan/Astria/releases/latest)** em Releases. Escolha `Astria-Portable-x.y.z.zip`. Os arquivos automáticos “Source code” do GitHub são para desenvolvimento e não são o aplicativo pronto.
+**[Baixe o ZIP portátil mais recente](https://github.com/ikugan132/Astria/releases/latest)** em Releases. Escolha `Astria-Portable-x.y.z.zip`. Os arquivos automáticos “Source code” do GitHub são para desenvolvimento e não são o aplicativo pronto.
 
 1. Extraia o ZIP inteiro para uma pasta curta com permissão de gravação, como `D:\Astria`.
 2. Abra **Astria.exe** dentro da pasta extraída.

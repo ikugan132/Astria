@@ -6,7 +6,7 @@ A compact, portable multi-account browser for **browser games** on Windows. Open
 
 ## Download
 
-**[Download the latest portable ZIP](https://github.com/IgorKugan/Astria/releases/latest)** from Releases. Choose `Astria-Portable-x.y.z.zip`; GitHub's automatic “Source code” archives are for developers, not the runnable app.
+**[Download the latest portable ZIP](https://github.com/ikugan132/Astria/releases/latest)** from Releases. Choose `Astria-Portable-x.y.z.zip`; GitHub's automatic “Source code” archives are for developers, not the runnable app.
 
 1. Extract the ZIP completely to a short, writable path such as `D:\Astria`.
 2. Open **Astria.exe** inside the extracted folder.

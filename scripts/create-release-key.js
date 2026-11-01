@@ -8,5 +8,5 @@ fs.mkdirSync(directory, { recursive: true });
 const target = path.join(directory, 'update-private.pem');
 const keys = generateKeyPairSync('ed25519', { publicKeyEncoding: { type: 'spki', format: 'pem' }, privateKeyEncoding: { type: 'pkcs8', format: 'pem' } });
 fs.writeFileSync(target, keys.privateKey, { mode: 0o600, flag: 'wx' });
-fs.writeFileSync(path.join(root, 'src', 'release-config.json'), JSON.stringify({ repository: 'IgorKugan/Astria', publicKey: keys.publicKey }, null, 2) + '\n');
+fs.writeFileSync(path.join(root, 'src', 'release-config.json'), JSON.stringify({ repository: 'ikugan132/Astria', publicKey: keys.publicKey }, null, 2) + '\n');
 console.log('Update identity generated. Private key is local and excluded from Git.');
