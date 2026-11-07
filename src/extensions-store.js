@@ -27,21 +27,30 @@ function checked(target, directory = false, create = false) {
       fs.mkdirSync(current);
       stat = fs.lstatSync(current);
     }
-    if (stat.isSymbolicLink() || !samePath(fs.realpathSync.native(current), current)) throw new Error('Extension path contains a symbolic link or redirected folder.');
+    if (stat.isSymbolicLink()) throw new Error('Extension path contains a symbolic link.');
+    const real = fs.realpathSync.native(current);
+    if (!samePath(real, current)) {
+      // Windows can spell the same directory entry with a short 8.3 name.
+      if (process.platform !== 'win32' || !/~[1-9]\d*(?:\.|$)/.test(parts[i]) ||
+          !samePath(path.dirname(real), path.dirname(current))) throw new Error('Extension path contains a redirected folder.');
+      const alias = fs.lstatSync(current, { bigint: true }), entry = fs.lstatSync(real, { bigint: true });
+      if (alias.isSymbolicLink() || entry.isSymbolicLink() || alias.dev !== entry.dev || alias.ino !== entry.ino) throw new Error('Extension path contains a redirected folder.');
+      current = real;
+    }
     if ((i < parts.length - 1 || directory) && !stat.isDirectory()) throw new Error('Extension path must be a real directory.');
     if (i === parts.length - 1 && !directory && !stat.isFile()) throw new Error('Extension path must be a regular file.');
   }
-  return absolute;
+  return current;
 }
 
 function readFile(file, limit) {
   checked(file);
-  const before = fs.lstatSync(file);
-  if (before.size > limit) throw new Error('Extension file exceeds the maximum size.');
   const descriptor = fs.openSync(file, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW || 0));
   try {
     const stat = fs.fstatSync(descriptor);
-    if (!stat.isFile() || stat.dev !== before.dev || stat.ino !== before.ino || stat.size > limit) throw new Error('Extension file changed or exceeds the maximum size.');
+    checked(file);
+    const entry = fs.lstatSync(file);
+    if (!stat.isFile() || !entry.isFile() || stat.dev !== entry.dev || stat.ino !== entry.ino || stat.size > limit) throw new Error('Extension file changed or exceeds the maximum size.');
     const buffer = Buffer.alloc(stat.size);
     let offset = 0;
     while (offset < buffer.length) {
