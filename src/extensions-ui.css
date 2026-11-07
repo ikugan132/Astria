@@ -1,0 +1,14 @@
+.extensions-modal{width:min(650px,calc(100vw - 36px))}
+.extension-list{display:flex;flex-direction:column;gap:12px;max-height:48vh;overflow:auto;padding:2px}
+.extension-item{padding:14px;border:1px solid var(--line);border-radius:6px;overflow-wrap:anywhere}
+.extension-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:10px}
+.extension-heading strong,.extension-heading .small-note{display:block}
+.extension-heading label{flex:none;gap:6px}
+.extension-item details{margin:8px 0 12px;font-size:12px;color:var(--muted)}
+.extension-item summary{cursor:pointer}.extension-item ul{padding-left:20px;line-height:1.6}
+.extension-item .automation-buttons{margin-top:12px}
+.extension-notice,.extension-error{font-size:12px;line-height:1.6;overflow-wrap:anywhere;color:var(--text)}
+.extension-actions{flex-wrap:wrap}.extensions-button svg{width:14px;height:14px}
+.account-link.account-dragging{opacity:.45}.account-link.drop-before:before,.account-link.drop-after:after{content:'';position:absolute;left:5px;right:5px;height:2px;background:var(--accent);pointer-events:none}.account-link.drop-before:before{top:0}.account-link.drop-after:after{bottom:0}
+@container(max-width:500px){.panel-head .extensions-button{display:none}}
+@media(max-width:500px){.extension-heading{align-items:flex-start;flex-wrap:wrap}.extension-actions{justify-content:flex-start}}

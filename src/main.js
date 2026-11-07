@@ -11,6 +11,8 @@ const { closePage } = require('./view-close');
 const { frameBudget, resolutions, resolutionBounds } = require('./performance');
 const { collectPageMemory } = require('./memory-cleanup');
 const { Automation } = require('./automation');
+const { ExtensionsStore } = require('./extensions-store');
+const { reorderAccounts } = require('./account-order');
 const MacroCore = require('./macro-core');
 const { floatingPosition, floatingPositions, floatingDefault, floatingAccounts, floatingBounds, positionAt } = require('./floating-layout');
 const { configureStorage, writeAccountGuide } = require('./storage');
@@ -47,6 +49,8 @@ let overlayOpen = false;
 let metricsTimer;
 let updates;
 let automation,pendingPick,preparingPick;
+let extensionsStore;
+const extensionContexts=new Map(),extensionQueues=new Map(),extensionErrors=new Map();
 let layoutReady = false;
 let windowShown = false;
 let quitting = false;
@@ -182,6 +186,54 @@ function currentAccounts() {
   return state.accounts.filter(a => a.workspaceId === state.activeWorkspaceId);
 }
 
+function isAutomating(id){return automation?.runs.has(id)||extensionContexts.get(id)?.controlling;}
+
+function accountSession(id){
+  const siteSession=session.fromPartition(`persist:multinest-${id}`,{cache:true});
+  siteSession.setPermissionRequestHandler((_contents,_permission,callback)=>callback(false));
+  siteSession.setPermissionCheckHandler(()=>false);
+  siteSession.setDevicePermissionHandler?.(()=>false);
+  if(storage.portable)siteSession.setDownloadPath(storage.games);
+  return siteSession;
+}
+
+function extensionQueue(id,operation){
+  const previous=extensionQueues.get(id)||Promise.resolve();
+  const next=previous.catch(()=>{}).then(operation);extensionQueues.set(id,next);
+  next.finally(()=>{if(extensionQueues.get(id)===next)extensionQueues.delete(id);}).catch(()=>{});return next;
+}
+
+function extensionContext(id){
+  accountById(id);
+  if(state.accounts.some(account=>account.id!==id&&account.id.toLowerCase()===id.toLowerCase()))throw Error(T('IDs de contas conflitam neste Windows.'));
+  if(!extensionContexts.has(id)){
+    const {AccountExtensions}=require('./extensions-runtime');
+    const siteSession=accountSession(id);
+    extensionContexts.set(id,new AccountExtensions({session:siteSession,game:()=>views.get(id)?.webContents,window:()=>windowMain,onActivity:()=>refreshViews(),selectGame:()=>{const account=accountById(id);state.activeWorkspaceId=account.workspaceId;selectAccountState(id);requestAccountFocus();publish();},onWindow:child=>{
+      const view=views.get(id);if(view){view.popups.add(child);child.on('closed',()=>view.popups.delete(child));}
+    }}));
+  }
+  return extensionContexts.get(id);
+}
+
+function prepareExtensions(id,contents){return extensionQueue(id,async()=>{
+  if(quitting)return;
+  const entries=extensionsStore.list(id).filter(entry=>entry.enabled);
+  if(!entries.length&&!extensionContexts.has(id))return;
+  const context=extensionContext(id);if(contents&&!contents.isDestroyed())context.addGame(contents);
+  const errors=extensionErrors.get(id)||new Map();extensionErrors.set(id,errors);
+  for(const entry of entries){
+    if(session.fromPartition(`persist:multinest-${id}`).extensions.getExtension(entry.extensionId))continue;
+    try{const loaded=await context.load(extensionsStore.folder(id,entry.id));if(loaded.id!==entry.extensionId){await context.unload(loaded.id);throw Error(T('A identidade da extensão mudou. Reinstale a pasta.'));}errors.delete(entry.id);}
+    catch(error){errors.set(entry.id,error.message||String(error));}
+  }
+});}
+
+function listExtensions(id){
+  accountById(id);const siteSession=session.fromPartition(`persist:multinest-${id}`);
+  return extensionsStore.list(id).map(entry=>({...entry,loaded:!!siteSession.extensions.getExtension(entry.extensionId),error:extensionErrors.get(id)?.get(entry.id)||''}));
+}
+
 function selectDefaultAccount() {
   const workspace=state.workspaces.find(w=>w.id===state.activeWorkspaceId),accounts=currentAccounts();
   const floating=new Set(workspace.layout==='floating'?(floatingPositions(workspace.floating)||[]).map(p=>p.accountId):[]);
@@ -284,12 +336,7 @@ function makeView(account) {
   if (views.has(account.id)) return views.get(account.id);
   if (modeFor(account) === 'suspended') return null;
   const partition = `persist:multinest-${account.id}`;
-  const siteSession = session.fromPartition(partition, { cache: true });
-  if (storage.portable) siteSession.setDownloadPath(storage.games);
-  // Untrusted pages cannot access Node/Electron or request privileged OS permissions.
-  siteSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
-  siteSession.setPermissionCheckHandler(() => false);
-  siteSession.setDevicePermissionHandler?.(() => false);
+  const siteSession = accountSession(account.id);
   const view = new WebContentsView({
     webPreferences: {
       partition,
@@ -390,7 +437,8 @@ function makeView(account) {
     finishInitialLoad(account.id, view);
     setStatus(account.id, { error: T('Processo encerrado: ') + details.reason });
   });
-  Promise.resolve().then(() => {
+  Promise.resolve().then(async () => {
+    try{await prepareExtensions(account.id,view.webContents);}catch(error){if(!quitting)windowMain.webContents.send('ui:toast',T('Extensões')+': '+error.message);}
     if (views.get(account.id) === view && !view.webContents.isDestroyed()) return view.webContents.loadURL(account.url);
   }).catch(err => {
     setStatus(account.id, { error: err.message, loading: false });
@@ -431,7 +479,7 @@ function closeApplication(quit = false) {
   if (closingApplication) return closingApplication;
   quitting = true;
   cancelPick();
-  closingApplication = Promise.all([automation?.stopAll(),...closingViews.values(), ...[...views.keys()].map(id => destroyView(id))]).then(() => {
+  closingApplication = Promise.all([automation?.stopAll(),...[...new Set([...extensionContexts.keys(),...extensionQueues.keys()])].map(id=>extensionQueue(id,()=>extensionContexts.get(id)?.dispose())),...closingViews.values(), ...[...views.keys()].map(id => destroyView(id))]).then(() => {
     allowWindowClose = true;
     if (quitAfterClosing) app.quit();
     else if (windowMain && !windowMain.isDestroyed()) windowMain.close();
@@ -487,7 +535,7 @@ function refreshViews() {
       if (floatingSize) view.floatingArea = frame.area;
       if (panel) applyResolution(view,account,panel);
     }
-    const automating=automation?.runs.has(account.id);
+    const automating=isAutomating(account.id);
     const throttled = !automating && (!(backgroundMode(modeFor(account)) || state.preferences.visualRest || state.ultraAccountId) || !windowVisible);
     if (view.throttled !== throttled) {
       view.webContents.setBackgroundThrottling(throttled);
@@ -503,7 +551,7 @@ function refreshViews() {
       setStatus(account.id, { queued: false, sleeping: true, loading: false, error: '' });
       continue;
     }
-    if (backgroundMode(mode) || onScreen || automation?.runs.has(account.id) || ((state.preferences.visualRest || state.ultraAccountId) && views.has(account.id))) {
+    if (backgroundMode(mode) || onScreen || isAutomating(account.id) || ((state.preferences.visualRest || state.ultraAccountId) && views.has(account.id))) {
       clearTimeout(idleTimers.get(account.id)); idleTimers.delete(account.id);
       const view = views.get(account.id);
       if (!view) {
@@ -800,10 +848,15 @@ function popupMenu(template, point) {
 
 function showAccountMenu(id, point, params) {
   const a = accountById(id), v = views.get(id);
+  const ordered=currentAccounts(),index=ordered.findIndex(account=>account.id===id);
+  const move=offset=>{const ids=ordered.map(account=>account.id);[ids[index],ids[index+offset]]=[ids[index+offset],ids[index]];return runAction('account:order',a.workspaceId,ids);};
   const template = [
     { label: a.name, enabled: false },
     { label: T('Renomear conta…'), click: () => uiCommand('rename-account', id) },
     { label: T('Escolher cor…'), click: () => uiCommand('account-color', id) },
+    { label: T('Mover para cima'), enabled:index>0, click:()=>move(-1) },
+    { label: T('Mover para baixo'), enabled:index>=0&&index<ordered.length-1, click:()=>move(1) },
+    { label: T('Extensões…'), click:()=>uiCommand('extensions',id) },
     { label: T('Contas flutuantes…'), enabled:currentAccounts().length>1, click:()=>uiCommand('floating-accounts') },
     { label: 'Auto Clicker…', click:()=>uiCommand('auto-clicker',id) },
     { label: 'Macro Maker…', click:()=>uiCommand('macro-maker',id) },
@@ -976,6 +1029,29 @@ function registerIPC() {
     return { ok: true };
   });
   listen('state:get', () => ({ ok: true, state, statuses: Object.fromEntries(viewStatuses) }));
+  listen('account:order',(workspaceId,ids)=>{
+    if(workspaceId!==state.activeWorkspaceId)throw Error(T('Espaço não encontrado.'));
+    state.accounts=reorderAccounts(state.accounts,workspaceId,ids);publish();return {ok:true};
+  });
+  listen('extensions:list',async id=>{await prepareExtensions(id,views.get(id)?.webContents);return {ok:true,extensions:listExtensions(id)};});
+  listen('extensions:install',async id=>{
+    accountById(id);const result=await dialog.showOpenDialog(windowMain,{title:T('Instalar extensão da pasta'),properties:['openDirectory']});
+    if(result.canceled||!result.filePaths?.[0])return {ok:true,cancelled:true};
+    await extensionQueue(id,()=>{accountById(id);extensionsStore.install(id,result.filePaths[0]);});
+    await prepareExtensions(id,views.get(id)?.webContents);return {ok:true};
+  });
+  listen('extensions:enable',async(id,entryId,enabled)=>{
+    await extensionQueue(id,async()=>{accountById(id);const entry=extensionsStore.setEnabled(id,entryId,enabled);if(!enabled)await extensionContexts.get(id)?.unload(entry.extensionId);});
+    await prepareExtensions(id,views.get(id)?.webContents);return {ok:true};
+  });
+  listen('extensions:remove',async(id,entryId)=>{
+    await extensionQueue(id,async()=>{accountById(id);const entry=extensionsStore.list(id).find(item=>item.id===entryId);if(!entry)throw Error(T('Extensão não encontrada.'));await extensionContexts.get(id)?.unload(entry.extensionId);extensionsStore.remove(id,entryId);extensionErrors.get(id)?.delete(entryId);});return {ok:true};
+  });
+  listen('extensions:open',async(id,entryId)=>{
+    await prepareExtensions(id,views.get(id)?.webContents);const entry=listExtensions(id).find(item=>item.id===entryId);
+    if(!entry?.enabled||!entry.loaded)throw Error(T('Ative a extensão primeiro.'));
+    await extensionContext(id).open(entry.extensionId);return {ok:true};
+  });
   listen('automation:get',id=>({ok:true,...automation.get(id)}));
   listen('automation:save',async(id,settings)=>({ok:true,settings:await automation.save(id,settings)}));
   listen('automation:start',async(id,request)=>({ok:true,runtime:await automation.start(id,request)}));
@@ -1029,10 +1105,11 @@ function registerIPC() {
     requestAccountFocus();
     boundsForAccounts.clear(); publish(); return { ok: true };
   });
-  listen('workspace:delete', (id) => {
+  listen('workspace:delete', async (id) => {
     if (state.workspaces.length < 2) throw new Error(T('Mantenha pelo menos um espaço.'));
     const w = state.workspaces.find(w => w.id === id);
     if (!w) throw new Error(T('Espaço não encontrado.'));
+    await Promise.all(state.accounts.filter(a=>a.workspaceId===id).map(a=>extensionQueue(a.id,()=>extensionContexts.get(a.id)?.dispose())));
     for (const a of state.accounts.filter(a => a.workspaceId === id)) destroyView(a.id);
     state.accounts = state.accounts.filter(a => a.workspaceId !== id);
     state.workspaces = state.workspaces.filter(w => w.id !== id);
@@ -1068,8 +1145,8 @@ function registerIPC() {
     }
     publish(); return { ok: true };
   });
-  listen('account:delete', (id) => {
-    accountById(id); destroyView(id);
+  listen('account:delete', async (id) => {
+    accountById(id);await extensionQueue(id,()=>extensionContexts.get(id)?.dispose());destroyView(id);
     state.accounts = state.accounts.filter(a => a.id !== id);
     if (state.selectedAccountId === id) selectDefaultAccount();
     publish(); return { ok: true, note: T('Sessão salva no disco; dados do site não foram apagados.') };
@@ -1203,6 +1280,8 @@ function registerIPC() {
       parsed = JSON.parse(buffer.subarray(0, total).toString('utf8'));
     } finally { await handle.close(); }
     const newState = normalizeImport(parsed);
+    const partitionIds=new Set();for(const account of newState.accounts){const folded=account.id.toLowerCase();if(partitionIds.has(folded))throw Error(T('IDs de contas conflitam neste Windows.'));partitionIds.add(folded);}
+    await Promise.all([...extensionContexts.keys()].map(id=>extensionQueue(id,()=>extensionContexts.get(id).dispose())));
     for (const id of [...views.keys()]) destroyView(id);
     state = newState; boundsForAccounts.clear(); publish(); return { ok: true };
   });
@@ -1339,6 +1418,7 @@ if (ownsInstance) app.whenReady().then(() => {
   session.defaultSession?.setPermissionCheckHandler(() => false);
   session.defaultSession?.setDevicePermissionHandler?.(() => false);
   state = loadState();
+  extensionsStore=new ExtensionsStore({directory:path.join(storage.root||app.getPath('userData'),'Extensions')});
   automation=new Automation({directory:path.join(storage.root||app.getPath('userData'),'Automation'),account:accountById,view:id=>views.get(id),notify:(id,runtime)=>{
     if(windowMain&&!windowMain.isDestroyed())windowMain.webContents.send('automation:state',{id,runtime});
     const view=views.get(id),contents=view?.webContents;if(contents&&!contents.isDestroyed())contents.send('astria:automation',runtime);

@@ -1,0 +1,30 @@
+'use strict';
+const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),os=require('node:os'),http=require('node:http');
+const {_electron:electron}=require('playwright');
+const root=path.resolve(__dirname,'..'),profile=fs.mkdtempSync(path.join(os.tmpdir(),'astria-order-')),wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+let app,page;
+const server=http.createServer((_req,res)=>{res.setHeader('content-type','text/html');res.end('<!doctype html><script>window.instance=crypto.randomUUID();document.cookie="order-test=kept;max-age=3600;path=/";localStorage.setItem("order-test","kept")</script><p>Account ordering fixture</p>');});
+const state=()=>page.evaluate(()=>window.multiNest.getState()).then(result=>result.state);
+const order=()=>page.locator('#sidebar-accounts [data-id]').evaluateAll(nodes=>nodes.map(node=>node.dataset.id));
+async function until(fn,label){for(let n=0;n<200;n++){if(await fn())return;await wait(50);}throw Error('Order timeout: '+label);}
+const snapshots=()=>app.evaluate(async({webContents})=>Promise.all(webContents.getAllWebContents().filter(w=>w.getURL().startsWith('http://127.0.0.1')).map(async w=>({id:new URL(w.getURL()).searchParams.get('id'),...await w.executeJavaScript('({instance,cookie:document.cookie,storage:localStorage.getItem("order-test")})')}))));
+(async()=>{
+ await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const url='http://127.0.0.1:'+server.address().port;
+ fs.writeFileSync(path.join(profile,'config.json'),JSON.stringify({activeWorkspaceId:'games',selectedAccountId:'b',workspaces:[{id:'games',name:'Games',layout:'focus'},{id:'other',name:'Other',layout:'focus'}],accounts:['a','x','b','c'].map(id=>({id,workspaceId:id==='x'?'other':'games',name:'Account '+id,url:url+'/?id='+id,activity:'always'})),preferences:{language:'en'}}));
+ const env={...process.env,MULTINEST_USER_DATA:profile};delete env.ELECTRON_RUN_AS_NODE;
+ const launch=async()=>{app=await electron.launch({executablePath:process.env.MULTINEST_TEST_EXE||require('electron'),args:process.env.MULTINEST_TEST_EXE?['--user-data-dir='+profile]:[root],env});page=await app.firstWindow();await page.waitForSelector('.account-link');};
+ await launch();await until(async()=>(await snapshots()).length===4,'all account sessions');const before=await snapshots();
+ const first=page.locator('.account-link[data-id=a]'),last=page.locator('.account-link[data-id=c]'),box=await last.boundingBox();
+ await first.dragTo(last,{targetPosition:{x:15,y:box.height-3}});await until(async()=>JSON.stringify(await order())==='["b","c","a"]','native drag persists');
+ assert.equal((await state()).selectedAccountId,'b','dragging does not select another game');assert.deepEqual((await state()).accounts.map(account=>account.id),['b','x','c','a'],'other workspace positions are preserved');
+ assert.deepEqual((await snapshots()).sort((a,b)=>a.id.localeCompare(b.id)),before.sort((a,b)=>a.id.localeCompare(b.id)),'reordering does not reload or alter isolated sessions');
+ assert.equal((await page.evaluate(()=>window.multiNest.accountOrder('games',['a','a','b']))).ok,false);
+ assert.equal((await page.evaluate(()=>window.multiNest.accountOrder('other',['x']))).ok,false);
+ await app.evaluate(({Menu})=>{Menu.prototype.popup=function(){globalThis.orderMenu=this;};});await page.locator('.account-link[data-id=a]').click({button:'right'});
+ await app.evaluate(({BaseWindow})=>{const item=globalThis.orderMenu.items.find(item=>item.label==='Move up');if(!item?.enabled)throw Error('Move up missing');item.click(item,BaseWindow.getAllWindows()[0],{});});
+ await until(async()=>JSON.stringify(await order())==='["b","a","c"]','native menu moves account');
+ fs.mkdirSync(path.join(root,'test-results'),{recursive:true});await page.screenshot({path:path.join(root,'test-results','account-order-en.png')});
+ await app.close();await launch();assert.deepEqual(await order(),['b','a','c'],'order survives restart');
+ await until(async()=>(await snapshots()).length===4,'restored sessions');assert.ok((await snapshots()).every(sample=>sample.cookie.includes('order-test=kept')&&sample.storage==='kept'),'site data survives restart');
+ console.log('PASS: integrated native account drag, context-menu alternatives, selection, isolated sessions and portable order persistence');
+})().catch(error=>{console.error(error);process.exitCode=1;}).finally(async()=>{if(app)await app.close();server.close();});

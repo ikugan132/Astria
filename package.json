@@ -1,7 +1,7 @@
 {
   "name": "astria",
   "productName": "Astria",
-  "version": "1.10.2",
+  "version": "1.11.0",
   "description": "Portable multi-account browser for browser games, with isolated sessions and a compact interface.",
   "main": "src/main.js",
   "private": true,
@@ -11,7 +11,7 @@
     "start": "node scripts/start-dev.js",
     "package:win": "electron-builder --win nsis",
     "package:portable": "electron-builder --win dir && node scripts/create-portable.js",
-    "test": "node tests/smoke.js && node tests/view-loads.js && node tests/frame-limiter.js && node tests/performance.js && node tests/floating.js && node tests/automation-engine.js && node tests/automation-host.js && node tests/automation-ui.js && node tests/memory-cleanup.js && node tests/trusted-ui.js && node tests/i18n.js && node tests/updates.js && node tests/helper-lifecycle.js && node scripts/check-public.js",
+    "test": "node tests/smoke.js && node tests/view-loads.js && node tests/frame-limiter.js && node tests/performance.js && node tests/floating.js && node tests/account-order.js && node tests/extensions-store.js && node tests/extensions-runtime.js && node tests/automation-engine.js && node tests/automation-host.js && node tests/automation-ui.js && node tests/memory-cleanup.js && node tests/trusted-ui.js && node tests/i18n.js && node tests/updates.js && node tests/helper-lifecycle.js && node scripts/check-public.js",
     "release:prepare": "node scripts/release.js",
     "test:e2e": "node tests/e2e.js",
     "test:portable": "node tests/portable.js",
@@ -23,6 +23,8 @@
     "test:close": "node tests/close-e2e.js",
     "test:update": "node tests/update-flow.js",
     "test:floating": "node tests/floating-e2e.js && node tests/floating-multi-e2e.js",
+    "test:profiles": "node tests/account-order-ui.js && node tests/account-order-e2e.js",
+    "test:extensions": "node tests/extensions-e2e.js",
     "test:layers": "node tests/layering-e2e.js",
     "brand:build": "node scripts/create-brand.js",
     "test:automation": "node tests/automation-e2e.js && node tests/automation-background-e2e.js"
@@ -33,6 +35,7 @@
     "playwright": "1.64.1"
   },
   "dependencies": {
+    "electron-chrome-extensions": "4.10.0",
     "yauzl": "3.4.0"
   },
   "overrides": {

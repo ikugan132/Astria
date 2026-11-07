@@ -73,6 +73,14 @@ Selecting another account in the sidebar puts the previous main account in that 
 
 Left-clicking an account's color selects the account, including with the sidebar collapsed. To customize its color, right-click the account and choose **Choose color…**.
 
+### Account order and extensions
+
+Drag accounts up or down in the sidebar, or use **Move up / Move down** in the account's right-click menu. Astria saves the order in the workspace.
+
+Use the puzzle button beside **Performance**, or **Extensions…** in the account menu. Choose **Install folder…** and select the unpacked folder containing `manifest.json`. Reload that account to apply content scripts. **Open panel** opens the extension's UI in its own window, bound to that account. Enable, disable or remove extensions from the same manager. Copies live in **Save/Extensions**, with separate extension data for each account.
+
+Chrome APIs are partially supported. Store installation and `.crx` packages are unavailable; use an unpacked folder. A macro extension and Astria's built-in automation cannot control the same page at the same time.
+
 ## Portable data
 
 ### Native automation

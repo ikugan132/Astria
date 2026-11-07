@@ -7,6 +7,14 @@
   else root.AstriaI18n = api;
 })(typeof window === 'object' ? window : globalThis, () => {
   const strings = {
+    'Extensões':'Extensions','Extensões…':'Extensions…','Instalar extensão da pasta':'Install extension from folder','Extensão não encontrada.':'Extension not found.','Ative a extensão primeiro.':'Enable the extension first.',
+    'IDs de contas conflitam neste Windows.':'Account IDs conflict on this Windows system.','A identidade da extensão mudou. Reinstale a pasta.':'The extension identity changed. Reinstall the folder.',
+    'Arraste para reordenar':'Drag to reorder','Mover para cima':'Move up','Mover para baixo':'Move down',
+    'Somente nesta conta. Instale uma pasta com manifest.json; os arquivos acompanham a pasta Save.':'Only in this account. Install a folder with manifest.json; its files stay in Save.',
+    'A compatibilidade depende das APIs usadas pela extensão.':'Compatibility depends on the APIs used by the extension.',
+    'Ativada':'Enabled','Desativada':'Disabled','Não carregada':'Not loaded','Ativar extensão':'Enable extension','Permissões solicitadas':'Requested permissions','Abrir painel':'Open panel','Remover extensão':'Remove extension','Nenhuma extensão instalada nesta conta.':'No extensions installed in this account.',
+    'Depois de instalar, ativar ou remover, recarregue a conta para aplicar os scripts da página. Isso reconecta o jogo e para a automação.':'After installing, enabling or removing, reload the account to apply page scripts. This reconnects the game and stops automation.',
+    'Instalar pasta…':'Install folder…','Recarregar conta':'Reload account','Alterações salvas. Recarregue a conta para aplicar os scripts.':'Changes saved. Reload the account to apply page scripts.',
     'Contas flutuantes…':'Floating accounts…','Escolher contas flutuantes':'Choose floating accounts','Marque uma ou mais contas para aparecerem sobre a conta principal. Cada janela tem seu próprio tamanho, posição e alfinete.':'Select one or more accounts to appear above the main account. Each window has its own size, position and pin.','Seleção de contas inválida.':'Invalid account selection.','Aplicar':'Apply',
     'Clique para trocar.':'Click to swap.','Diminuir janela':'Make window smaller','Aumentar janela':'Make window larger','Redimensionar · arraste ou use as setas':'Resize · drag or use arrow keys','Fixar janela':'Pin window','Desafixar janela':'Unpin window','Tamanho inválido.':'Invalid size.',
     'Flutuante':'Floating', 'Clique para trocar. Arraste para mover.':'Click to swap. Drag to move.', 'Mover para outro canto':'Move to next corner', 'Trocar com conta flutuante · setas para mover':'Swap with floating account · arrow keys to move', 'Posição inválida.':'Invalid position.',

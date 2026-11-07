@@ -73,6 +73,14 @@ Ao escolher outra conta na lateral, a anterior ocupa a janela daquela conta, ou 
 
 O clique esquerdo na cor seleciona a conta, inclusive com a lateral recolhida. Para personalizar a cor, clique com o botão direito na conta e escolha **Escolher cor…**.
 
+### Ordem das contas e extensões
+
+Arraste as contas para cima ou para baixo na lateral, ou use **Mover para cima / Mover para baixo** no menu do botão direito. O Astria salva a ordem no espaço.
+
+Use o botão de quebra-cabeça ao lado de **Desempenho**, ou **Extensões…** no menu da conta. Escolha **Instalar pasta…** e selecione a pasta descompactada que contém `manifest.json`. Recarregue a conta para aplicar os scripts. **Abrir painel** abre a interface da extensão numa janela vinculada àquela conta. Ative, desative ou remova extensões no mesmo gerenciador. As cópias ficam em **Save/Extensions**, com dados separados por conta.
+
+O suporte às APIs do Chrome é parcial. A instalação pela loja e os pacotes `.crx` não estão disponíveis; use uma pasta descompactada. Uma extensão de macro e a automação nativa do Astria não podem controlar a mesma página simultaneamente.
+
 ## Dados portáteis
 
 ### Automação nativa

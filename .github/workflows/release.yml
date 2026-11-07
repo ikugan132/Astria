@@ -26,6 +26,8 @@ jobs:
       - run: npm run test:performance
       - run: npm run test:activity
       - run: npm run test:floating
+      - run: npm run test:profiles
+      - run: npm run test:extensions
       - run: npm run test:automation
       - run: npm run test:layers
       - run: npm run test:startup
