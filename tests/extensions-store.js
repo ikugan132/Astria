@@ -93,7 +93,7 @@ try {
 
   const missingCopy = portable.install('missing-copy', fixedSource);
   const missingFolder = portable.folder('missing-copy', missingCopy.id);
-  assert.equal(path.dirname(missingFolder), accountFolder(moved, 'missing-copy'));
+  assert.equal(path.dirname(missingFolder), fs.realpathSync.native(accountFolder(moved, 'missing-copy')));
   fs.rmSync(missingFolder, { recursive: true });
   assert.equal(portable.remove('missing-copy', missingCopy.id), true, 'missing copies must remain removable');
   assert.deepEqual(portable.list('missing-copy'), []);
