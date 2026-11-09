@@ -97,7 +97,7 @@ test('driver refuses another debugger and keeps its attachment until disposal', 
   assert.equal(foreign.debugger.isAttached(), true);
   const p = page();
   const driver = await createDriver(p);
-  await assert.rejects(createDriver(p), /debugger|depurador/i);
+  await assert.rejects(createDriver(p), /already running/i);
   assert.deepEqual(await driver.viewport(), { width: 800, height: 600 });
   await driver.dispose();
   await driver.dispose();

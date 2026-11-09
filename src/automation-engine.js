@@ -1,5 +1,6 @@
 'use strict';
 const keys = require('./macro-keys');
+const { lease: debuggerLease } = require('./debugger-share');
 
 const owners = new WeakMap();
 const running = new WeakSet();
@@ -72,8 +73,9 @@ function normalizeSettings(raw = {}) {
 async function createDriver(contents) {
   if (!contents || contents.isDestroyed()) throw new Error('Account page is closed.');
   const debug = contents.debugger;
-  if (owners.has(contents) || debug.isAttached()) throw new Error('This account already has an attached debugger.');
-  debug.attach('1.3');
+  if (owners.has(contents)) throw new Error('The Auto Clicker is already running in this account.');
+  // Shares the page's debugger with extensions in the same account.
+  const connection = debuggerLease(contents);
   let attached = true, disposed = false, disposePromise, fault = null, tail = Promise.resolve();
   let position = { x: 0, y: 0 }, buttons = 0;
   const lifecycle = new AbortController();
@@ -99,7 +101,7 @@ async function createDriver(contents) {
     if (!attached || contents.isDestroyed()) throw new Error('Account debugger is closed.');
     let timer;
     try {
-      return await Promise.race([debug.sendCommand(method, params), new Promise((_, reject) => {
+      return await Promise.race([connection.send(method, params), new Promise((_, reject) => {
         timer = setTimeout(() => {
           fault = new Error('Automation input timed out.');
           reject(fault);
@@ -194,7 +196,7 @@ async function createDriver(contents) {
         finally {
           debug.removeListener('detach', lost);
           contents.removeListener('destroyed', lost);
-          try { if (attached && debug.isAttached()) { attached = false; debug.detach(); } }
+          try { attached = false; connection.release(); }
           finally { if (owners.get(contents) === driver) owners.delete(contents); }
         }
       }, null, true);

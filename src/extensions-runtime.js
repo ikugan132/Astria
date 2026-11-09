@@ -1,5 +1,6 @@
 'use strict';
 const path = require('node:path');
+const { lease: debuggerLease } = require('./debugger-share');
 
 const CHANNEL = 'astria-extension-api', EVENT = 'astria-extension-event';
 const sessions = new WeakMap(), registered = new WeakSet();
@@ -220,13 +221,14 @@ class AccountExtensions {
     const slot = `${contents.id}|${extensionId}`;
     let record = this.attached.get(slot);
     if (method === 'attach') {
-      // Like Chrome, several extensions may control the same tab: they share Electron's one debugger connection.
+      // Like Chrome, several extensions and Astria's Auto Clicker may control the same tab: they share Electron's one debugger connection.
       // Chrome's wording, so extensions that detach and retry on "already attached" recover.
-      const shared = this._records(contents.id).length > 0;
-      if (record || contents.debugger.isAttached() && !shared) throw new Error(`Another debugger is already attached to the tab with id: ${contents.id}.`);
+      const taken = `Another debugger is already attached to the tab with id: ${contents.id}.`;
+      if (record) throw new Error(taken);
       if (args[1] !== undefined && typeof args[1] !== 'string') throw new Error('Invalid debugger protocol version.');
-      if (!contents.debugger.isAttached()) contents.debugger.attach(args[1] || '1.3');
-      record = { slot, extensionId, contents, debug: contents.debugger, tabId: contents.id, attached: true, closing: false, keys: new Map(), buttons: new Map(), mouse: { x: 0, y: 0 }, tail: Promise.resolve() };
+      let connection;
+      try { connection = debuggerLease(contents, args[1] || '1.3'); } catch { throw new Error(taken); }
+      record = { connection, slot, extensionId, contents, debug: contents.debugger, tabId: contents.id, attached: true, closing: false, keys: new Map(), buttons: new Map(), mouse: { x: 0, y: 0 }, tail: Promise.resolve() };
       record.detachListener = (_event, reason) => this._lost(record, reason || 'target_closed');
       record.messageListener = (_event, name, params) => this._event(extensionId, 'debugger.onEvent', { tabId: contents.id }, name, params);
       contents.debugger.on('detach', record.detachListener);
@@ -262,7 +264,7 @@ class AccountExtensions {
       }
       const key = `${params.code || params.key || params.windowsVirtualKeyCode}:${params.location || 0}`;
       if (command === 'Input.dispatchKeyEvent' && ['keyDown', 'rawKeyDown'].includes(params.type)) record.keys.set(key, params);
-      const result = await bounded(contents.debugger.sendCommand(command, params), 3000);
+      const result = await bounded(record.connection.send(command, params), 3000);
       if (command === 'Input.dispatchMouseEvent' && params.type === 'mouseReleased') record.buttons.delete(params.button);
       if (command === 'Input.dispatchKeyEvent' && params.type === 'keyUp') record.keys.delete(key);
       return result;
@@ -291,16 +293,15 @@ class AccountExtensions {
         for (const [button, params] of [...record.buttons].reverse()) {
           if (!record.attached || record.contents.isDestroyed() || Date.now() >= deadline) break;
           record.buttons.delete(button);
-          await bounded(debug.sendCommand('Input.dispatchMouseEvent', { ...params, ...record.mouse, type: 'mouseReleased', buttons: [...record.buttons.keys()].reduce((bits, name) => bits | BUTTONS[name], 0), modifiers: 0 }), deadline - Date.now()).catch(() => {});
+          await bounded(record.connection.send('Input.dispatchMouseEvent', { ...params, ...record.mouse, type: 'mouseReleased', buttons: [...record.buttons.keys()].reduce((bits, name) => bits | BUTTONS[name], 0), modifiers: 0 }), deadline - Date.now()).catch(() => {});
         }
         for (const params of [...record.keys.values()].reverse()) {
           if (!record.attached || record.contents.isDestroyed() || Date.now() >= deadline) break;
-          await bounded(debug.sendCommand('Input.dispatchKeyEvent', { ...params, type: 'keyUp', text: '', unmodifiedText: '', modifiers: 0 }), deadline - Date.now()).catch(() => {});
+          await bounded(record.connection.send('Input.dispatchKeyEvent', { ...params, type: 'keyUp', text: '', unmodifiedText: '', modifiers: 0 }), deadline - Date.now()).catch(() => {});
         }
       } finally {
-        // The connection stays while another extension still controls this tab.
-        const shared = this._records(record.tabId).some(other => other !== record);
-        try { if (!shared && record.attached && !record.contents.isDestroyed() && debug.isAttached()) debug.detach(); }
+        // The connection stays while another extension or the Auto Clicker still controls this tab.
+        try { record.connection.release(); }
         finally { this._lost(record, 'canceled_by_user'); }
       }
     })();

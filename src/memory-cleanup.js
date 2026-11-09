@@ -1,15 +1,16 @@
 'use strict';
+const { lease } = require('./debugger-share');
 const lastCleanup = new WeakMap();
 let busy = false;
 async function collectPageMemory(contents) {
   if (contents.isDestroyed()) return 'closed';
   if (busy) return 'busy';
-  if (contents.debugger.isAttached()) return 'debugging';
   if (Date.now() - (lastCleanup.get(contents) || 0) < 120000) return 'cooldown';
-  let timer, owned = false;
+  let timer, connection;
+  // Shares the debugger with a running Auto Clicker or extension; only another tool (DevTools) blocks it.
+  try { connection = lease(contents); } catch { return 'debugging'; }
   busy = true;
   try {
-    contents.debugger.attach('1.3'); owned = true;
     await Promise.race([
       contents.debugger.sendCommand('HeapProfiler.collectGarbage'),
       new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('Memory cleanup timed out')), 5000); })
@@ -18,7 +19,7 @@ async function collectPageMemory(contents) {
     return 'collected';
   } finally {
     clearTimeout(timer);
-    try { if (owned && !contents.isDestroyed() && contents.debugger.isAttached()) contents.debugger.detach(); }
+    try { connection.release(); }
     finally { busy = false; }
   }
 }
