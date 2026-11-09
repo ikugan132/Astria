@@ -431,9 +431,16 @@ class AccountExtensions {
       }
       return original(event, ...args);
     });
-    for (const name of ['windows.get', 'windows.getAll', 'windows.getCurrent', 'windows.getLastFocused']) wrap(name, (event, args, original) => {
+    // Chrome side panels live inside the browser window; Astria shows them as their own window, so a focused panel counts as its account window.
+    const focusView = details => {
+      const main = this.window();
+      if (!details || typeof details !== 'object' || !main || details.id !== main.id || details.focused) return details;
+      return [...this.panels.values()].some(win => !win.isDestroyed() && win.isFocused()) ? { ...details, focused: true } : details;
+    };
+    for (const name of ['windows.get', 'windows.getAll', 'windows.getCurrent', 'windows.getLastFocused']) wrap(name, async (event, args, original) => {
       this._host.ctx.store.windowDetailsCache.clear();
-      return original(event, ...args);
+      const result = await original(event, ...args);
+      return Array.isArray(result) ? result.map(focusView) : focusView(result);
     });
     wrap('tabs.query', (event, [info = {}], original) => original(event, info.currentWindow ? { ...info, windowId: this.window().id } : info));
     wrap('tabs.update', (event, args, original) => {

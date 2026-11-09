@@ -1,10 +1,6 @@
 .automation-modal{width:min(760px,calc(100vw - 36px));max-height:calc(100vh - 40px);overflow:auto;scroll-padding:16px}
 .automation-heading{display:flex;align-items:baseline;justify-content:space-between;gap:16px}
 .automation-heading>span{color:var(--muted);font-size:12px;overflow-wrap:anywhere;max-width:55%}
-.automation-tabs{display:flex;gap:6px;margin:12px 0;border-bottom:1px solid var(--line);padding-bottom:8px}
-.automation-tabs button{flex:1;min-height:36px;border:1px solid transparent;border-radius:6px;background:transparent;color:var(--muted);font:inherit;font-size:13px}
-.automation-tabs button[aria-selected=true]{color:var(--accent);background:var(--tint);border-color:var(--line)}
-.automation-tabs button:hover{background:var(--raised);color:var(--text)}
 .automation-scope{margin:0 0 16px}
 .automation-controls{padding:0;border:0;margin:0;min-width:0}
 .automation-toolbar{display:flex;align-items:flex-end;justify-content:space-between;gap:10px;margin:0 0 12px}
@@ -32,20 +28,17 @@
 .automation-target-list{display:flex;flex-direction:column;gap:4px;max-height:155px;overflow:auto;margin-bottom:12px;padding:3px}
 .automation-target-row{display:flex;align-items:center;gap:8px}
 .automation-target-row>.automation-check{margin:0;padding:8px 2px}
-.automation-target,.automation-step{display:flex;flex-direction:column;text-align:left;gap:4px;min-width:0;width:100%;border:1px solid var(--line);border-radius:6px;padding:9px 10px;background:var(--bg);color:var(--text);font:inherit;font-size:12px}
-.automation-target small,.automation-step small{color:var(--muted);font-size:11px;overflow-wrap:anywhere}
-.automation-target span,.automation-step span{overflow-wrap:anywhere}
-.automation-target:hover,.automation-step:hover{background:var(--raised)}
-.automation-target.selected,.automation-step.selected{background:var(--tint);border-color:var(--accent)}
+.automation-target{display:flex;flex-direction:column;text-align:left;gap:4px;min-width:0;width:100%;border:1px solid var(--line);border-radius:6px;padding:9px 10px;background:var(--bg);color:var(--text);font:inherit;font-size:12px}
+.automation-target small{color:var(--muted);font-size:11px;overflow-wrap:anywhere}
+.automation-target span{overflow-wrap:anywhere}
+.automation-target:hover{background:var(--raised)}
+.automation-target.selected{background:var(--tint);border-color:var(--accent)}
 .automation-editor{border:1px solid var(--line);border-radius:7px;padding:14px;min-width:0}
 .automation-editor>.small-note{margin:0}
-.automation-step-layout{display:grid;grid-template-columns:minmax(150px,.8fr) minmax(0,1.6fr);gap:12px}
-.automation-steps{list-style:none;padding:3px;margin:0;display:flex;flex-direction:column;gap:5px;max-height:450px;overflow:auto;align-self:start}
 .automation-empty{padding:14px 0;margin:0}
 .automation-delete{display:flex;justify-content:flex-end;margin-top:12px}
-.automation-file-actions{margin-bottom:14px}
 .automation-footer{position:sticky;bottom:0;z-index:1;background:var(--surface);margin-top:18px;padding:14px 0 2px;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:12px}
 .automation-footer>[data-runtime],.automation-footer p{margin:0 0 2px}
 .automation-footer>.automation-buttons{justify-content:flex-end}
 .automation-error{color:var(--text);border-left:3px solid var(--accent);background:var(--tint);padding:10px 12px;line-height:1.5;font-size:12px;overflow-wrap:anywhere}
-@media(max-width:600px){.automation-modal{padding:18px}.automation-grid,.automation-step-layout{grid-template-columns:minmax(0,1fr)}.automation-steps{max-height:180px}.automation-toolbar{flex-wrap:wrap}.automation-toolbar>.field{flex-basis:60%}.automation-heading{align-items:flex-start}.automation-footer>.automation-buttons{justify-content:flex-start}}
+@media(max-width:600px){.automation-modal{padding:18px}.automation-grid{grid-template-columns:minmax(0,1fr)}.automation-toolbar{flex-wrap:wrap}.automation-toolbar>.field{flex-basis:60%}.automation-heading{align-items:flex-start}.automation-footer>.automation-buttons{justify-content:flex-start}}

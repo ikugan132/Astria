@@ -1,5 +1,4 @@
 'use strict';
-const core = require('./macro-core');
 const keys = require('./macro-keys');
 
 const owners = new WeakMap();
@@ -10,6 +9,14 @@ const MAX_SETTINGS_BYTES = 8 * 1024 * 1024;
 const abortError = () => Object.assign(new Error('Automation aborted.'), { name: 'AbortError' });
 const checkAbort = signal => { if (signal?.aborted) throw abortError(); };
 
+function fmtNum(v) { return Number.isInteger(v) ? String(v) : String(+v.toFixed(3)).replace('.', ','); }
+function parseNum(value, label, lo, hi, integer = false) {
+  const n = typeof value === 'string' ? Number(value.trim().replace(',', '.')) : value;
+  if (typeof n !== 'number' || value === '' || value === null || !Number.isFinite(n)) throw new Error(`${label}: precisa ser um número.`);
+  if (n < lo || n > hi) throw new Error(`${label}: precisa estar entre ${fmtNum(lo)} e ${fmtNum(hi)}.`);
+  if (integer && !Number.isInteger(n)) throw new Error(`${label}: precisa ser um número inteiro.`);
+  return integer ? n : Math.round(n * 10000) / 10000;
+}
 function object(value, label) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`${label}: invalid object.`);
   return value;
@@ -20,8 +27,8 @@ function label(value, name, max) {
 }
 function viewport(value) {
   object(value, 'Viewport');
-  return { width: core.parseNum(value.width, 'Viewport width', 1, 100000, true),
-    height: core.parseNum(value.height, 'Viewport height', 1, 100000, true) };
+  return { width: parseNum(value.width, 'Viewport width', 1, 100000, true),
+    height: parseNum(value.height, 'Viewport height', 1, 100000, true) };
 }
 function point(value) {
   object(value, 'Point');
@@ -43,8 +50,6 @@ function normalizeSettings(raw = {}) {
       return { ...value, id, name: label(value.name, 'Name', 80) };
     });
   };
-  const macros = list('macros').map(value => ({ id: value.id, name: value.name, profile: core.cleanProfile(value.profile),
-    ...(value.viewport === undefined ? {} : { viewport: viewport(value.viewport) }) }));
   const targets = list('targets').map(value => {
     const action = object(value.action, 'Action');
     let clean;
@@ -57,9 +62,9 @@ function normalizeSettings(raw = {}) {
     if (typeof markerColor !== 'string' || !/^#[a-f\d]{6}$/i.test(markerColor)) throw new Error('Invalid marker color.');
     return { id: value.id, name: value.name, enabled: value.enabled !== false,
       showMarker: value.showMarker !== false, markerColor: markerColor.toLowerCase(),
-      interval: core.parseNum(value.interval ?? 5, 'Interval', .05, 86400), action: clean, point: point(value.point) };
+      interval: parseNum(value.interval ?? 5, 'Interval', .05, 86400), action: clean, point: point(value.point) };
   });
-  const result = { macros, targets };
+  const result = { targets };
   if (Buffer.byteLength(JSON.stringify(result), 'utf8') > MAX_SETTINGS_BYTES) throw new Error('Automation settings exceed 8 MiB.');
   return result;
 }
@@ -179,27 +184,6 @@ async function createDriver(contents) {
         for (const item of type === 'up' ? names.reverse() : names) await key(type, item, signal);
       }, signal);
     },
-    text(text, signal) {
-      return enqueue(async () => {
-        for (const ch of text) {
-          checkAbort(signal);
-          available();
-          if (ch === '\r') continue;
-          if (ch === '\n' || ch === '\t') {
-            const name = ch === '\n' ? 'Enter' : 'Tab';
-            await key('down', name, signal); await key('up', name, signal);
-            continue;
-          }
-          const hit = keys.CHAR_KEYS[ch], modifiers = modifierBits();
-          if (hit && !(modifiers & 7) && !(modifiers & 8 && !hit[1])) {
-            const shift = hit[1] && !(modifiers & 8);
-            if (shift) await key('down', 'Shift', signal);
-            await key('down', hit[0], signal); await key('up', hit[0], signal);
-            if (shift) await key('up', 'Shift', signal);
-          } else { checkAbort(signal); await send('Input.insertText', { text: ch }); }
-        }
-      }, signal);
-    },
     release() { return enqueue(release, null, true); },
     dispose() {
       if (disposePromise) return disposePromise;
@@ -249,22 +233,6 @@ async function withRun({ driver, signal, onState }, execute) {
   onState?.({ phase: failure ? 'error' : signal?.aborted ? 'stopped' : 'completed' });
   if (failure) throw failure;
 }
-async function scaledPoint(driver, x, y, source, signal) {
-  const size = await driver.viewport(signal);
-  return { x: Math.min(size.width - 1, Math.floor(x * size.width / source.width)),
-    y: Math.min(size.height - 1, Math.floor(y * size.height / source.height)) };
-}
-async function moveTo(driver, at, seconds, signal) {
-  if (seconds) {
-    const start = driver.position, began = Date.now(), duration = seconds * 1000;
-    while (Date.now() - began < duration) {
-      const part = Math.min(1, (Date.now() - began) / duration), ease = part * part * (3 - 2 * part);
-      await driver.mouse('move', { x: start.x + (at.x - start.x) * ease, y: start.y + (at.y - start.y) * ease }, {}, signal);
-      await wait(16, signal);
-    }
-  }
-  await driver.mouse('move', at, {}, signal);
-}
 async function tapKey(driver, key, mods, hold, signal) {
   await driver.key('down', key, mods, signal);
   await wait(Math.max(10, hold * 1000), signal);
@@ -281,50 +249,6 @@ async function click(driver, button, count, signal, hold = 30) {
 function runOptions(options) {
   const signals = [options.signal, driverSignals.get(options.driver)].filter(Boolean);
   return { ...options, signal: signals.length ? AbortSignal.any(signals) : undefined };
-}
-async function runMacro(record, options) {
-  options = runOptions(options);
-  const { driver, signal, onState } = options;
-  return withRun(options, async () => {
-    object(record, 'Macro');
-    const profile = core.cleanProfile(record.profile);
-    const source = record.viewport === undefined ? await driver.viewport(signal) : viewport(record.viewport);
-    const enabled = profile.steps.map((step, index) => ({ step, index })).filter(item => item.step.enabled);
-    if (!enabled.length) throw new Error('Add an enabled macro step first.');
-    for (const { step } of enabled) {
-      if (step.at_point && !(step.x >= 0 && step.y >= 0 && step.x < source.width && step.y < source.height)) throw new Error('Macro point is outside the source viewport.');
-    }
-    const repeats = record.once ? 1 : profile.repeat;
-    onState?.({ phase: 'countdown', cycle: 0, step: -1 });
-    await wait(profile.start_delay * 1000, signal);
-    for (let cycle = 1; !repeats || cycle <= repeats; cycle++) {
-      for (const { step: s, index } of enabled) {
-        checkAbort(signal);
-        onState?.({ phase: 'running', cycle, step: index });
-        checkAbort(signal);
-        if (s.type === 'key') {
-          if (s.action === 'tap') await tapKey(driver, s.key, s.mods, s.hold, signal);
-          else await driver.key(s.action, s.key, s.mods, signal);
-        } else if (['mouse', 'move', 'scroll'].includes(s.type)) {
-          if (s.at_point) await moveTo(driver, await scaledPoint(driver, s.x, s.y, source, signal), s.glide || 0, signal);
-          if (s.type === 'mouse') {
-            if (s.action === 'click' || s.action === 'double') await click(driver, s.button, s.action === 'double' ? 2 : 1, signal);
-            else await driver.mouse(s.action, null, { button: s.button }, signal);
-          } else if (s.type === 'scroll') {
-            for (let n = 0; n < s.amount; n++) {
-              await driver.mouse('wheel', null, { deltaY: s.direction === 'down' ? 100 : -100 }, signal);
-              await wait(25, signal);
-            }
-          }
-        } else if (s.type === 'text') {
-          for (const ch of s.text) { await driver.text(ch, signal); await wait(Math.max(3, s.char_delay * 1000), signal); }
-        } else await wait((s.seconds + Math.random() * s.random) * 1000, signal);
-        if (s.type !== 'wait' && s.after) await wait(s.after * 1000, signal);
-      }
-      if (repeats && cycle >= repeats) break;
-      await wait(Math.max(10, profile.loop_delay * 1000), signal);
-    }
-  });
 }
 async function runClicker(targets, options) {
   options = runOptions(options);
@@ -351,4 +275,4 @@ async function runClicker(targets, options) {
   });
 }
 
-module.exports = { normalizeSettings, createDriver, runMacro, runClicker };
+module.exports = { normalizeSettings, createDriver, runClicker };

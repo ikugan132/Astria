@@ -85,17 +85,16 @@ Chrome APIs are partially supported. Store installation and `.crx` packages are 
 
 ### Native automation
 
-Open an account's **Automation** button, or right-click it and choose **Auto Clicker…** / **Macro Maker…**. These are separate tools:
+Open an account's **Automation** button, or right-click it and choose **Auto Clicker…**:
 
 - **Auto Clicker:** add targets, choose their points on the game page, select a mouse button or keyboard input, set each interval, then start. Each point can show a circle at 50% opacity, red by default, with a color picker. Turn off **Show circle** to keep the actions running without any marker. Markers have no name, crosshair or countdown. Preview temporarily uncovers the game. Inputs stay in that account; the Windows cursor remains free.
 - While automation runs, that account stays loaded and its background timers remain active, including when Astria is minimized or another workspace is selected. **Stop** restores its usual activity policy; Eco still limits rendering FPS. Closing, suspending or navigating the page stops automation, and reopening Astria never starts it automatically.
-- **Macro Maker:** create ordered key, mouse, move, scroll, text and wait steps; configure start/repeat delays, run once or repeat, and import/export version-2 Macro Maker JSON files.
 
 Targets use account-page coordinates and scale with floating windows, fixed resolutions and zoom. They follow the account when swapping floating/main views. If the game rearranges its controls, choose the point again. Clicking to choose a point does not click the game. Esc or right-click cancels selection.
 
-Each account runs independently. Starting one tool stops the other tool in that account. Use **Stop**, the account menu, or **Menu → Automation → Stop all automation**. Normal game shortcuts remain available. Reloading/navigating, suspending or closing the account stops its automation; reopening Astria never starts it automatically. The existing five-minute unload policy still applies to accounts set to Active when visible. No extra game instance or screen polling is used.
+Each account runs independently. Use **Stop**, the account menu, or **Menu → Automation → Stop all automation**. Normal game shortcuts remain available. Reloading/navigating, suspending or closing the account stops its automation; reopening Astria never starts it automatically. The existing five-minute unload policy still applies to accounts set to Active when visible. No extra game instance or screen polling is used.
 
-Settings and macro exports stay in **Save/Automation**, separately from game profiles. Importing a macro never gives it desktop control: all inputs remain inside its chosen Astria account.
+Auto Clicker targets stay in **Save/Automation**, separately from game profiles. All inputs remain inside the chosen Astria account.
 
 Pages opened in the background start with a usable viewport, based on the visible panel, rather than a 1×1 surface. This lets games calculate their initial canvas, camera and interface at a normal size. Switching Always active accounts keeps the same page instance and its in-memory state; it does not reload or copy another account's data.
 
@@ -105,7 +104,7 @@ Astria creates **Save** beside the executable on first launch:
 | --- | --- |
 | Profile | Settings and separate Chromium account profiles |
 | Games | Files/saves downloaded or exported from games |
-| Automation | Per-account macro profiles, clicker targets and macro exports |
+| Automation | Per-account Auto Clicker targets |
 | Backups | Configuration exports and previous programs from updates |
 | Updates | Verified update staging and local update logs |
 | Temp, Logs, CrashDumps | Temporary and diagnostic data |

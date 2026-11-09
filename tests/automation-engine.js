@@ -5,8 +5,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const { EventEmitter } = require('node:events');
 
-const { normalizeSettings, createDriver, runMacro, runClicker } = require('../src/automation-engine');
-const core = require('../src/macro-core');
+const { normalizeSettings, createDriver, runClicker } = require('../src/automation-engine');
 const keys = require('../src/macro-keys');
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const tests = [];
@@ -33,39 +32,24 @@ const input = p => p.commands.filter(c => c.method.startsWith('Input.'));
 const target = (id, interval = .05, action = { type: 'mouse', button: 'left' }) => ({
   id, name: id, enabled: true, interval, action, point: { x: .25, y: .5, width: 800, height: 600 }
 });
-const record = steps => ({ id: 'macro', name: 'Macro', viewport: { width: 800, height: 600 },
-  profile: { version: 2, repeat: 1, start_delay: 0, loop_delay: 0, steps } });
 
-test('version 2 profiles and all key helpers work in CommonJS and browser scripts', () => {
+test('key helpers work in CommonJS and browser scripts', () => {
   assert.deepEqual(keys.makeCombo('control', ['SHIFT', 'Ctrl']), { key: 'Ctrl', mods: ['Shift'] });
   assert.deepEqual(keys.makeCombo('escape', []), { key: 'Esc', mods: [] });
-  const p = core.cleanProfile({ version: 2, repeat: 2, start_delay: 0, steps: [
-    { type: 'key', key: 'F8' }, { type: 'mouse', x: 100, y: 200 }, { type: 'text', text: 'é🐈' }
-  ] });
-  assert.equal(p.steps[0].key, 'F8');
-  assert.equal(p.steps[1].at_point, true);
-  assert.equal(p.steps[2].text, 'é🐈');
-  assert.throws(() => core.cleanProfile({ version: 3 }), /versão/);
-  assert.throws(() => core.cleanStep({ type: 'key', key: 'made up' }), /Tecla/);
   const context = vm.createContext({ URL });
-  for (const file of ['macro-keys.js', 'macro-core.js']) vm.runInContext(fs.readFileSync(path.join(__dirname, '../src', file), 'utf8'), context);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '../src/macro-keys.js'), 'utf8'), context);
   assert.equal(context.AstriaMacroKeys.keyDef('F10').name, 'F10');
-  assert.equal(context.AstriaMacroCore.newProfile().version, 2);
-  assert.equal(context.AstriaMacroCore.describeStep(context.AstriaMacroCore.defaultStep('wait')), 'Esperar 1 s');
 });
 
 test('settings validation snapshots and bounds account data without retaining extra fields', () => {
-  assert.deepEqual(normalizeSettings(), { macros: [], targets: [] });
-  const raw = { macros: [record([{ type: 'key', key: 'return', mods: ['control'] }])], targets: [target('one')], extra: true };
+  assert.deepEqual(normalizeSettings(), { targets: [] });
+  const raw = { macros: [{ id: 'old-macro', name: 'Old', profile: { version: 2, steps: [] } }], targets: [target('one')], extra: true };
   const result = normalizeSettings(raw);
   raw.targets[0].point.x = .9;
   assert.equal(result.targets[0].point.x, .25);
-  assert.deepEqual(result.macros[0].profile.steps[0].mods, ['Ctrl']);
-  assert.equal(result.macros[0].profile.steps[0].key, 'Enter');
-  assert.equal('extra' in result, false);
-  for (const invalid of [null, [], { macros: {} }, { targets: [target('same'), target('same')] },
+  assert.deepEqual(Object.keys(result), ['targets'], 'old Macro Maker profiles and extra fields are dropped');
+  for (const invalid of [null, [], { targets: {} }, { targets: [target('same'), target('same')] },
     { targets: [{ ...target('one'), interval: .049 }] }, { targets: [{ ...target('one'), point: { x: 1, y: 0, width: 800, height: 600 } }] },
-    { macros: [{ ...record([]), viewport: { width: 0, height: 600 } }] },
     { targets: [{ ...target('one'), action: { type: 'key', key: 'invalid' } }] },
     { targets: Array.from({ length: 101 }, (_, n) => target(String(n))) }]) {
     assert.throws(() => normalizeSettings(invalid));
@@ -99,10 +83,9 @@ test('marker options default to visible red and reject invalid colors or visibil
   }
 });
 
-test('settings reject macro and target IDs that could alter selectors or paths', () => {
+test('settings reject target IDs that could alter selectors or paths', () => {
   for (const id of ['bad"id', 'bad\'id', '../macro', 'path\\target', '#selector', 'spaced id', 'under_score', ' padded ']) {
     assert.throws(() => normalizeSettings({ targets: [{ ...target('one'), id }] }), /ID/);
-    assert.throws(() => normalizeSettings({ macros: [{ ...record([]), id }] }), /ID/);
   }
   assert.equal(normalizeSettings({ targets: [target('Aa09-valid-uuid')] }).targets[0].id, 'Aa09-valid-uuid');
 });
@@ -148,77 +131,7 @@ test('pointer dispatch uses current widget scale while stored positions and view
   await driver.dispose();
 });
 
-test('macro rescales logical points after resize and sends trusted CDP key combinations', async () => {
-  const p = page(400, 300);
-  const driver = await createDriver(p);
-  const states = [];
-  await runMacro(record([
-    { type: 'mouse', action: 'click', button: 'right', at_point: true, x: 200, y: 300, after: 0 },
-    { type: 'key', action: 'tap', key: 'A', mods: ['Ctrl'], hold: 0, after: 0 },
-    { type: 'key', action: 'tap', key: 'F8', hold: 0, after: 0 },
-    { type: 'mouse', action: 'click', x: 200, y: 300, after: 0 }
-  ]), { driver, onState: patch => { states.push(patch); if (patch.step === 1) p.viewport = [1600, 1200]; } });
-  const events = input(p);
-  const click = events.find(c => c.params.type === 'mousePressed');
-  assert.equal(click.params.x, 100);
-  assert.equal(click.params.y, 150);
-  assert.equal(click.params.button, 'right');
-  assert.deepEqual(events.filter(c => c.params.type === 'mousePressed').map(c => [c.params.x, c.params.y]), [[100, 150], [400, 600]]);
-  assert.ok(p.astriaAutomationContextUntil > Date.now());
-  const a = events.find(c => c.params.code === 'KeyA' && c.params.type === 'rawKeyDown');
-  assert.equal(a.params.modifiers, 2);
-  assert.equal(a.params.text, '');
-  assert.ok(events.some(c => c.params.code === 'F8' && c.params.type === 'rawKeyDown'));
-  assert.equal(states.at(-1).phase, 'completed');
-  await driver.dispose();
-});
-
-test('macro point moves, wheel notches and unicode text retain profile behavior', async () => {
-  const p = page();
-  const driver = await createDriver(p);
-  await runMacro(record([
-    { type: 'move', x: 100, y: 50, glide: 0, after: 0 },
-    { type: 'scroll', direction: 'down', amount: 2, at_point: false, after: 0 },
-    { type: 'text', text: 'Aé\n', char_delay: 0, after: 0 }
-  ]), { driver });
-  const events = input(p);
-  assert.deepEqual(events.filter(c => c.params.type === 'mouseWheel').map(c => [c.params.x, c.params.y, c.params.deltaY]), [[100, 50, 100], [100, 50, 100]]);
-  assert.ok(events.some(c => c.params.code === 'KeyA' && c.params.key === 'A' && c.params.modifiers === 8));
-  assert.ok(events.some(c => c.method === 'Input.insertText' && c.params.text === 'é'));
-  assert.ok(events.some(c => c.params.code === 'Enter' && c.params.type === 'keyDown'));
-  await driver.dispose();
-});
-
-test('imports without viewport snapshot the starting page and start the virtual pointer at its center', async () => {
-  const p = page(400, 300);
-  const driver = await createDriver(p);
-  const imported = record([
-    { type: 'mouse', at_point: false, after: 0 },
-    { type: 'mouse', x: 100, y: 150, after: 0 }
-  ]);
-  delete imported.viewport;
-  await runMacro(imported, { driver, onState: s => { if (s.step === 1) p.viewport = [800, 600]; } });
-  assert.deepEqual(input(p).filter(c => c.params.type === 'mousePressed').map(c => [c.params.x, c.params.y]), [[200, 150], [200, 300]]);
-  await driver.dispose();
-});
-
-test('once and profile repeat counts finish, empty and out-of-viewport macros fail before input', async () => {
-  const p = page();
-  const driver = await createDriver(p);
-  const r = record([{ type: 'key', key: 'F10', hold: 0, after: 0 }]);
-  r.profile.repeat = 3;
-  await runMacro(r, { driver });
-  assert.equal(input(p).filter(c => c.params.code === 'F10' && c.params.type === 'rawKeyDown').length, 3);
-  p.commands.length = 0;
-  await runMacro({ ...r, once: true }, { driver });
-  assert.equal(input(p).filter(c => c.params.code === 'F10' && c.params.type === 'rawKeyDown').length, 1);
-  await assert.rejects(runMacro(record([]), { driver }), /passo|step/i);
-  const outside = record([{ type: 'mouse', x: 800, y: 0 }]);
-  await assert.rejects(runMacro(outside, { driver }), /ponto|point|visível|viewport/i);
-  await driver.dispose();
-});
-
-test('abort while a down is in flight releases it and prevents every later macro step', async () => {
+test('abort while a down is in flight releases it and prevents every later target input', async () => {
   const p = page();
   const driver = await createDriver(p);
   const controller = new AbortController();
@@ -230,29 +143,21 @@ test('abort while a down is in flight releases it and prevents every later macro
       await gate;
     }
   };
-  const running = runMacro(record([
-    { type: 'key', action: 'down', key: 'A', after: 0 },
-    { type: 'mouse', x: 5, y: 5, after: 0 }, { type: 'text', text: 'never', after: 0 }
-  ]), { driver, signal: controller.signal });
-  await sleep(10);
+  const running = runClicker([target('key', .05, { type: 'key', key: 'A', mods: [] }), target('click')], { driver, signal: controller.signal });
+  await sleep(80);
   resumed();
   await running;
-  assert.deepEqual(input(p).map(c => [c.method, c.params.type, c.params.code]), [
-    ['Input.dispatchKeyEvent', 'keyDown', 'KeyA'], ['Input.dispatchKeyEvent', 'keyUp', 'KeyA']
-  ]);
+  assert.deepEqual(input(p).filter(c => c.method === 'Input.dispatchKeyEvent').map(c => [c.params.type, c.params.code]), [['keyDown', 'KeyA'], ['keyUp', 'KeyA']]);
+  assert.equal(input(p).some(c => c.params.type === 'mousePressed'), false);
   await driver.dispose();
 });
 
-test('abort interrupts waits immediately and releases persistent mouse and modifier holds', async () => {
+test('releasing the driver lets go of persistent mouse and modifier holds', async () => {
   const p = page();
   const driver = await createDriver(p);
-  const controller = new AbortController();
-  const running = runMacro(record([
-    { type: 'key', action: 'down', key: 'B', mods: ['Shift'], after: 0 },
-    { type: 'mouse', action: 'down', x: 10, y: 20, after: 0 },
-    { type: 'wait', seconds: 86400 }
-  ]), { driver, signal: controller.signal, onState: s => { if (s.step === 2) controller.abort(); } });
-  await running;
+  await driver.key('down', 'B', ['Shift']);
+  await driver.mouse('down', { x: 10, y: 20 }, { button: 'left' });
+  await driver.release();
   const events = input(p);
   assert.ok(events.some(c => c.params.type === 'mouseReleased' && c.params.buttons === 0));
   assert.ok(events.some(c => c.params.code === 'KeyB' && c.params.type === 'keyUp'));
@@ -264,7 +169,7 @@ test('failed input still releases all tracked downs and disposal blocks queued i
   const p = page();
   const driver = await createDriver(p);
   p.intercept = async (method, params) => { if (params.code === 'KeyA' && params.type === 'rawKeyDown') throw Error('CDP failure'); };
-  await assert.rejects(runMacro(record([{ type: 'key', action: 'down', key: 'A', mods: ['Ctrl'] }]), { driver }), /CDP failure/);
+  await assert.rejects(runClicker([target('key', .05, { type: 'key', key: 'A', mods: ['Ctrl'] })], { driver }), /CDP failure/);
   assert.ok(input(p).some(c => c.params.code === 'KeyA' && c.params.type === 'keyUp'));
   assert.ok(input(p).some(c => c.params.code === 'ControlLeft' && c.params.type === 'keyUp'));
   p.intercept = null;
@@ -342,20 +247,20 @@ test('disposal during a modifier down cancels the rest of its in-flight combinat
   assert.ok(input(p).some(c => c.params.code === 'ControlLeft' && c.params.type === 'keyUp'));
 });
 
-test('driver disposal interrupts a running macro wait without waiting for its timer', async () => {
+test('driver disposal interrupts a waiting target countdown without waiting for its timer', async () => {
   const p = page();
   const driver = await createDriver(p);
   const controller = new AbortController();
   let entered;
   const waiting = new Promise(resolve => { entered = resolve; });
-  const macro = runMacro(record([{ type: 'wait', seconds: 1 }]), {
-    driver, signal: controller.signal, onState: s => { if (s.step === 0) entered(); }
+  const clicker = runClicker([target('slow', 60)], {
+    driver, signal: controller.signal, onState: s => { if (s.targets?.length) entered(); }
   });
   await waiting;
   await driver.dispose();
-  const completed = await Promise.race([macro.then(() => true), sleep(60).then(() => false)]);
+  const completed = await Promise.race([clicker.then(() => true), sleep(60).then(() => false)]);
   controller.abort();
-  await macro;
+  await clicker;
   assert.equal(completed, true);
 });
 

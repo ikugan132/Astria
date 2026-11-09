@@ -35,7 +35,8 @@ function setup() {
     isDestroyed() { return this.dead; }
     async loadURL(url) { return this.webContents.loadURL(url); }
     show() { this.shown = true; }
-    focus() { this.emit('focus'); }
+    focus() { Window.focused = this; this.emit('focus'); }
+    isFocused() { return Window.focused === this; }
     destroy() { if (this.dead) return; const contents = this.webContents; this.dead = true; contents.close(); this.emit('closed'); }
     close() { const event = { preventDefault() { this.prevented = true; } }; this.emit('close', event); if (!event.prevented) this.destroy(); }
     setBounds(bounds) { this.bounds = bounds; }
@@ -150,6 +151,11 @@ function setup() {
     const result = await library(name, ...args), rootWindow = Array.isArray(result) ? result.find(window => window.id === c.root.id) : result;
     assert.deepEqual(rootWindow.tabs, [{ id: c.game.id, url: 'https://game.example/' }], `${name} includes the account game when the window was cached before its first tab`);
     host.ctx.store.windowDetailsCache.set(c.root.id, { id: c.root.id, tabs: [] });
+  }
+  c.windows[0].focus();
+  for (const name of ['windows.getAll', 'windows.get', 'windows.getCurrent', 'windows.getLastFocused']) {
+    const result = await library(name, c.root.id), rootWindow = Array.isArray(result) ? result.find(window => window.id === c.root.id) : result;
+    assert.equal(rootWindow.focused, true, `${name} reports the account window focused while its extension panel has focus`);
   }
   await library('tabs.update', c.game.id, { active: true });
   assert.ok(c.calls.some(call => call[0] === 'selectGame'), 'activating an already active session tab selects its visible Astria account');

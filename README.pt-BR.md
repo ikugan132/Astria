@@ -85,17 +85,16 @@ O suporte às APIs do Chrome é parcial. A instalação pela loja e os pacotes `
 
 ### Automação nativa
 
-Abra o botão **Automação** da conta ou clique nela com o botão direito e escolha **Auto Clicker…** / **Macro Maker…**. São ferramentas separadas:
+Abra o botão **Automação** da conta ou clique nela com o botão direito e escolha **Auto Clicker…**:
 
 - **Auto Clicker:** adicione alvos, marque os pontos na página do jogo, escolha o botão do mouse ou entrada de teclado e o intervalo de cada alvo. Cada ponto pode mostrar um círculo com 50% de opacidade, vermelho por padrão, com escolha de cor. Desative **Mostrar círculo** para manter as ações funcionando sem nenhuma marca. Os marcadores não têm nome, mira nem contagem. A prévia mostra o jogo temporariamente. As entradas ficam naquela conta e o cursor do Windows continua livre.
 - Enquanto houver automação, a conta permanece carregada e os temporizadores continuam ativos, inclusive com o Astria minimizado ou outro espaço selecionado. **Parar** restaura o modo de atividade normal; Eco continua limitando o FPS da renderização. Fechar, suspender ou navegar a página encerra a automação, e reabrir o Astria nunca inicia ações automaticamente.
-- **Macro Maker:** organize passos de tecla, clique, movimento, rolagem, texto e espera; configure pausas e repetições, execute uma vez ou em ciclos e importe/exporte arquivos JSON do Macro Maker versão 2.
 
 Os pontos pertencem à página da conta e acompanham as janelas flutuantes, a resolução fixa, o zoom e as trocas com a principal. Se o jogo reorganizar os controles, marque novamente. Clicar para escolher o ponto não clica no jogo. Esc ou botão direito cancelam a seleção.
 
-Cada conta funciona de forma independente. Iniciar uma ferramenta para a outra naquela conta. Use **Parar**, o menu da conta ou **Menu → Automação → Parar todas as automações**. Os atalhos normais do jogo continuam disponíveis. Recarregar/navegar, suspender ou fechar a conta para a automação; reabrir o Astria nunca inicia sozinho. A política existente de descarregar após cinco minutos ainda vale para Ativa quando visível. Não são criadas outras instâncias do jogo nem capturas contínuas de tela.
+Cada conta funciona de forma independente. Use **Parar**, o menu da conta ou **Menu → Automação → Parar todas as automações**. Os atalhos normais do jogo continuam disponíveis. Recarregar/navegar, suspender ou fechar a conta para a automação; reabrir o Astria nunca inicia sozinho. A política existente de descarregar após cinco minutos ainda vale para Ativa quando visível. Não são criadas outras instâncias do jogo nem capturas contínuas de tela.
 
-As configurações e exportações ficam em **Save/Automation**, separadas dos perfis dos jogos. Importar um macro nunca dá controle sobre o desktop: todas as entradas ficam na conta escolhida do Astria.
+Os alvos do Auto Clicker ficam em **Save/Automation**, separados dos perfis dos jogos. Todas as entradas ficam na conta escolhida do Astria.
 
 Páginas abertas em segundo plano começam com uma área de tamanho adequado, baseada no painel visível, em vez de uma superfície de 1×1 pixel. Assim, os jogos podem calcular o Canvas, a câmera e a interface iniciais em um tamanho normal. Trocar entre contas Sempre ativas mantém a mesma página e seu estado em memória; não recarrega nem copia dados de outra conta.
 

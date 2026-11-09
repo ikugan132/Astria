@@ -144,8 +144,8 @@ function closeModal() {
 
 function openExtensions(a){if(a)window.AstriaExtensionsUI.open({account:a,api,modal,closeModal,tr,toast,esc});}
 
-function openAutomation(a,initialTab='clicker') {
-  if(a)window.AstriaAutomationUI.open({account:a,api,modal,closeModal,tr,toast,esc,initialTab});
+function openAutomation(a) {
+  if(a)window.AstriaAutomationUI.open({account:a,api,modal,closeModal,tr,toast,esc});
 }
 
 function chooseFloatingAccounts() {
@@ -334,7 +334,7 @@ api.onAutomation(({id,runtime})=>{automationStates[id]=runtime;for(const node of
 api.onToast(toast);
 api.onUpdateProgress(percent=>{const node=el('update-status');if(node)node.textContent=h`Baixando e verificando os arquivos… ${percent}%`;});
 api.onCommand(({type,id})=>{
-  const commands={extensions:()=>openExtensions(account(id||state.selectedAccountId)),'auto-clicker':()=>openAutomation(account(id||state.selectedAccountId)),'macro-maker':()=>openAutomation(account(id||state.selectedAccountId),'macro'),'floating-accounts':chooseFloatingAccounts,'add-account':()=>accountForm(),'rename-account':()=>renameAccount(account(id)),'account-color':()=>chooseColor(account(id)),'edit-account':()=>accountForm(account(id)),'delete-account':()=>confirmDelete(account(id)),'add-workspace':()=>workspaceForm(),'edit-workspace':()=>workspaceForm(true),import:confirmImport,'performance-help':()=>performanceHelp(id),updates:updateDialog};commands[type]?.();
+  const commands={extensions:()=>openExtensions(account(id||state.selectedAccountId)),'auto-clicker':()=>openAutomation(account(id||state.selectedAccountId)),'floating-accounts':chooseFloatingAccounts,'add-account':()=>accountForm(),'rename-account':()=>renameAccount(account(id)),'account-color':()=>chooseColor(account(id)),'edit-account':()=>accountForm(account(id)),'delete-account':()=>confirmDelete(account(id)),'add-workspace':()=>workspaceForm(),'edit-workspace':()=>workspaceForm(true),import:confirmImport,'performance-help':()=>performanceHelp(id),updates:updateDialog};commands[type]?.();
 });
 window.AstriaAccountOrder.connect({list:el('sidebar-accounts'),workspaceId:()=>state?.activeWorkspaceId,onOrder:(workspaceId,ids)=>call(api.accountOrder,workspaceId,ids)});
 api.getState().then(r=>{if(r?.ok){state=r.state;statuses=r.statuses||{};render();}else toast(tr('Não foi possível carregar a configuração.'));});

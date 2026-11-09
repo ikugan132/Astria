@@ -33,6 +33,9 @@ async function installThroughUI(id){
  assert.deepEqual(await panelA.evaluate(()=>({node:typeof require,bridge:typeof multiNest,temporary:typeof __astriaExtensionAPI})),{node:'undefined',bridge:'undefined',temporary:'undefined'},'extension never receives Astria host or Node APIs');
  const tabsA=await panelA.evaluate(()=>chrome.tabs.query({active:true,currentWindow:true}));assert.equal(tabsA.length,1);assert.ok(tabsA[0].url.endsWith('id=a'),'panel remains bound to the chosen game');
  const populated=await panelA.evaluate(()=>chrome.windows.getAll({populate:true}));assert.ok(populated.some(win=>win.tabs.some(tab=>tab.id===tabsA[0].id)),'window-based extension tab choosers contain the game');
+ assert.equal(await app.evaluate(({BrowserWindow})=>{const win=BrowserWindow.getAllWindows().find(w=>w.webContents.getURL().startsWith('chrome-extension://'));win.focus();return win.isFocused();}),true,'extension panel has focus');
+ const focusView=await panelA.evaluate(async id=>({all:(await chrome.windows.getAll({populate:true})).find(win=>win.tabs.some(tab=>tab.id===id))?.focused,last:(await chrome.windows.getLastFocused()).focused,current:(await chrome.windows.getCurrent()).focused}),tabsA[0].id);
+ assert.deepEqual(focusView,{all:true,last:true,current:true},'a focused extension panel counts as its account window, like a Chrome side panel');
  assert.ok(await panelA.evaluate(async()=> (await chrome.tabs.captureVisibleTab(undefined,{format:'png'})).startsWith('data:image/png;base64,')),'capture includes the account game only');
  assert.equal((await panelA.evaluate(()=>chrome.runtime.sendMessage({type:'input'}))).ok,true);await until(async()=>(await game('a')).presses===1,'service-worker trusted keyboard input');assert.equal((await game('b')).presses,0);
  await panelA.evaluate(()=>chrome.storage.local.set({accountValue:'alpha'}));

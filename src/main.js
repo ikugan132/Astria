@@ -13,7 +13,6 @@ const { collectPageMemory } = require('./memory-cleanup');
 const { Automation } = require('./automation');
 const { ExtensionsStore } = require('./extensions-store');
 const { reorderAccounts } = require('./account-order');
-const MacroCore = require('./macro-core');
 const { floatingPosition, floatingPositions, floatingDefault, floatingAccounts, floatingBounds, positionAt } = require('./floating-layout');
 const { configureStorage, writeAccountGuide } = require('./storage');
 const { Updates } = require('./updates');
@@ -787,16 +786,6 @@ async function pickAutomationPoint(id,initial) {
   });
 }
 
-async function readMacroFile(file) {
-  const handle=await fs.promises.open(file,'r');
-  try{
-    const buffer=Buffer.alloc(8*1024*1024+1);let total=0,count;
-    do{({bytesRead:count}=await handle.read(buffer,total,buffer.length-total,null));total+=count;}while(count&&total<buffer.length);
-    if(total>=buffer.length)throw Error(T('Arquivo muito grande.'));
-    return JSON.parse(buffer.subarray(0,total).toString('utf8'));
-  }finally{await handle.close();}
-}
-
 function listen(name, fn, authorize = trustedSender) {
   actions.set(name, fn);
   ipcMain.handle(name, async (event, ...args) => {
@@ -859,7 +848,6 @@ function showAccountMenu(id, point, params) {
     { label: T('Extensões…'), click:()=>uiCommand('extensions',id) },
     { label: T('Contas flutuantes…'), enabled:currentAccounts().length>1, click:()=>uiCommand('floating-accounts') },
     { label: 'Auto Clicker…', click:()=>uiCommand('auto-clicker',id) },
-    { label: 'Macro Maker…', click:()=>uiCommand('macro-maker',id) },
     { label: T('Parar automação'), enabled:automation.runs.has(id), click:()=>runAction('automation:stop',id) },
     { type: 'separator' },
     { label: T('Atividade'), submenu: [
@@ -911,7 +899,6 @@ function showAppMenu(point) {
     { label: 'Layout', submenu: layoutMenuItems(workspace) },
     { label: T('Automação'), submenu:[
       {label:'Auto Clicker…',enabled:!!selected,click:()=>uiCommand('auto-clicker',selected.id)},
-      {label:'Macro Maker…',enabled:!!selected,click:()=>uiCommand('macro-maker',selected.id)},
       {type:'separator'},
       {label:T('Parar todas as automações'),enabled:automation.runs.size>0,click:()=>runAction('automation:stop-all')}
     ]},
@@ -1065,22 +1052,6 @@ function registerIPC() {
     if(!view?.rendererReady)throw Error(T('Aguarde o carregamento da página.'));
     state.activeWorkspaceId=a.workspaceId;selectAccountState(id);requestAccountFocus();publish();
     view.webContents.send('astria:automation-preview',{point,markerColor});return {ok:true};
-  });
-  listen('automation:import',async id=>{
-    accountById(id);const result=await dialog.showOpenDialog(windowMain,{title:T('Importar macro'),properties:['openFile'],filters:[{name:'Macro Maker JSON',extensions:['json']}]});
-    if(result.canceled||!result.filePaths?.[0])return {ok:true,cancelled:true};
-    const raw=await readMacroFile(result.filePaths[0]),profile=MacroCore.cleanProfile(raw.profile||raw),settings=automation.get(id).settings;
-    const name=String(raw.name||path.basename(result.filePaths[0],'.json')).trim().slice(0,80)||'Macro';
-    const record={id:randomUUID(),name,profile};
-    if(raw.viewport)record.viewport=raw.viewport;
-    settings.macros.push(record);return {ok:true,settings:await automation.save(id,settings)};
-  });
-  listen('automation:export',async(id,macroId)=>{
-    const record=automation.get(id).settings.macros.find(m=>m.id===macroId);if(!record)throw Error(T('Macro não encontrado.'));
-    const folder=path.join(automation.directory,'Exports');fs.mkdirSync(folder,{recursive:true});
-    const result=await dialog.showSaveDialog(windowMain,{title:T('Exportar macro'),defaultPath:path.join(folder,(record.name.replace(/[\\/:*?"<>|\x00-\x1f]/g,'_')||'Macro')+'.json'),filters:[{name:'Macro Maker JSON',extensions:['json']}]});
-    if(result.canceled||!result.filePath)return {ok:true,cancelled:true};
-    fs.writeFileSync(result.filePath,JSON.stringify({...record.profile,name:record.name,...(record.viewport?{viewport:record.viewport}:{})},null,2),{mode:0o600});return {ok:true};
   });
   ipcMain.on('astria:automation-picked',(event,result)=>{
     const pick=pendingPick;

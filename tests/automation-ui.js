@@ -1,10 +1,8 @@
 'use strict';
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
-const core = require('../src/macro-core');
 const keys = require('../src/macro-keys');
 const strings = require('../src/automation-i18n');
-global.AstriaMacroCore = core;
 global.AstriaMacroKeys = keys;
 global.document = { body: {} };
 let observe;
@@ -19,8 +17,7 @@ const esc = value => String(value ?? '').replace(/[&<>"']/g, character => ({ '&'
 const tr = value => strings[value] || value;
 const point = { x: 0.25, y: 0.5, width: 800, height: 600 };
 const settings = {
-  targets: [{ id: 'target-one', name: 'First', enabled: true, interval: 5, action: { type: 'mouse', button: 'left' }, point }],
-  macros: [{ id: 'macro-one', name: 'Salvar', profile: { ...core.newProfile(), steps: [core.defaultStep('move')] }, viewport: { width: 800, height: 600 } }]
+  targets: [{ id: 'target-one', name: 'First', enabled: true, interval: 5, action: { type: 'mouse', button: 'left' }, point }]
 };
 let current, markup, draws = 0, listener, unsubscribed = 0, saved, started, pickResult, pendingSave;
 let previewResult = { ok: true };
@@ -68,7 +65,7 @@ async function click(action, data = {}) {
 
 (async () => {
   await ui.open(options);
-  assert.match(markup, /role="tablist"/);
+  assert.doesNotMatch(markup, /role="tablist"|Macro Maker|data-do="(?:once|import|export|tab)"/, 'only the Auto Clicker remains');
   assert.match(markup, /&lt;Account&gt;/);
   assert.match(markup, /type="color"[^>]*value="#ff0000"/);
   assert.match(markup, /data-field="showMarker" checked/);
@@ -115,35 +112,7 @@ async function click(action, data = {}) {
   assert.match(current.querySelector('[data-error]').textContent, /Choose a point/);
   assert.equal(saved.targets.length, 1, 'an unfinished target is never persisted');
   await click('delete-target');
-  await click('tab', { tab: 'macro' });
-  assert.match(markup, />Salvar<\/option>/, 'user profile names are never translated');
-  pickResult = { ok: true, point: { x: 0.5, y: 0.25, width: 1600, height: 1200 } };
-  await click('pick-step');
-  input('step', 'glide', 0.75, 'number');
-  await click('preview-step');
-  assert.equal(current.isConnected, true);
-  assert.match(markup, /value="0.75"/);
-  assert.deepEqual(previewPoints[1], { x: 0.5, y: 0.25, width: 800, height: 600 });
-  assert.deepEqual(previewDelays, [1600, 1600]);
-  await click('save');
-  assert.equal(saved.macros[0].profile.steps[0].x, 400, 'picked point uses the existing macro viewport');
-  assert.equal(saved.macros[0].profile.steps[0].y, 150);
-  current.querySelector('#automation-new-type').value = 'text';
-  await click('add-step');
-  input('step', 'text', 'Keep <text> intact');
-  await click('step-up');
-  await click('once');
-  assert.equal(saved.macros[0].profile.steps[0].text, 'Keep <text> intact');
-  assert.deepEqual(started, { kind: 'macro', macroId: 'macro-one', once: true });
-  const allTypes = ['key', 'mouse', 'move', 'scroll', 'text', 'wait'];
-  for (const type of allTypes) {
-    current.querySelector('#automation-new-type').value = type;
-    await click('add-step');
-    assert.match(markup, /Pass|Step/, 'each supported editor renders');
-  }
-  await click('save');
-  assert.equal(saved.macros[0].profile.steps.length, 8);
-  assert.equal(core.cleanProfile(saved.macros[0].profile).version, 2);
+  assert.equal('macros' in saved, false, 'saved settings carry Auto Clicker targets only');
   await click('close');
   assert.equal(unsubscribed, 1);
   await ui.open(options);
@@ -184,5 +153,5 @@ async function click(action, data = {}) {
   assert.equal(unsubscribed, 4);
   const source = fs.readFileSync(require.resolve('../src/automation-ui'), 'utf8');
   for (const match of source.matchAll(/\b(?:t|tr|Error)\('([^']+)'\)/g)) assert.ok(strings[match[1]], `missing EN string: ${match[1]}`);
-  console.log('PASS: automation drafts, runtime isolation, picking/cancel, uncovered marker previews, page coordinates, macro editing, action keys, cleanup and EN strings');
+  console.log('PASS: automation drafts, runtime isolation, picking/cancel, uncovered marker previews, page coordinates, action keys, cleanup and EN strings');
 })().catch(error => { console.error(error); process.exitCode = 1; }).finally(() => { global.setTimeout = realSetTimeout; });

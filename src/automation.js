@@ -34,10 +34,8 @@ class Automation {
     const account=this.account(id),view=this.view(id),settings=this.get(id).settings;
     if(account.activity==='suspended')throw Error('Retome a conta suspensa primeiro.');
     if(!view?.rendererReady||view.closing||view.webContents.isDestroyed()||!/^https?:/.test(view.webContents.getURL()))throw Error('Aguarde o carregamento da página.');
-    if(!request||!['macro','clicker'].includes(request.kind))throw Error('Opção inválida.');
-    const record=request.kind==='macro'?settings.macros.find(m=>m.id===request.macroId):null;
-    if(request.kind==='macro'&&!record)throw Error('Macro não encontrado.');
-    if(request.kind==='clicker'&&!settings.targets.some(t=>t.enabled))throw Error('Adicione e ative um alvo primeiro.');
+    if(request?.kind!=='clicker')throw Error('Opção inválida.');
+    if(!settings.targets.some(t=>t.enabled))throw Error('Adicione e ative um alvo primeiro.');
     const token=(this.requests.get(id)||0)+1;this.requests.set(id,token);
     await this.stop(id,true);
     if(this.requests.get(id)!==token)return this.runtime(id);
@@ -53,8 +51,7 @@ class Automation {
         ready();
         if(entry.controller.signal.aborted)return;
         const options={driver:entry.driver,signal:entry.controller.signal,onState:patch=>{if(this.runs.get(id)===entry&&!entry.controller.signal.aborted)this.update(id,patch);}};
-        if(record)await this.engine.runMacro({...record,once:request.once===true},options);
-        else await this.engine.runClicker(settings.targets,options);
+        await this.engine.runClicker(settings.targets,options);
       }catch(failure){
         failed(failure);
         if(!entry.controller.signal.aborted)error=failure.message||String(failure);

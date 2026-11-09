@@ -18,7 +18,7 @@ Astria.exe must be beside Save, not in another nested version folder.
 DATA
 Save\Profile: settings and separate browser account profiles.
 Save\Games: saves and files downloaded/exported from games.
-Save\Automation: per-account Macro Maker profiles, Auto Clicker targets and exports.
+Save\Automation: per-account Auto Clicker targets.
 Game HTTP caches stay inside each account's Profile folder.
 Old Save\SharedAssets folders are preserved but no longer used.
 Save\Backups: configuration exports and previous programs from updates.
@@ -53,7 +53,7 @@ O ZIP limpo nao inclui Save e nao substitui seus perfis, logins ou saves.
 Astria.exe deve ficar ao lado de Save, sem outra subpasta de versao.
 
 Profile guarda perfis das contas; Games guarda arquivos exportados/baixados.
-Automation guarda os macros e alvos do Auto Clicker de cada conta.
+Automation guarda os alvos do Auto Clicker de cada conta.
 Para transferir, feche o Astria e copie a pasta inteira, incluindo Save.
 O progresso online normalmente fica no servidor. Outro PC pode exigir novo login.
 Nunca compartilhe seu Save preenchido; distribua o ZIP limpo.

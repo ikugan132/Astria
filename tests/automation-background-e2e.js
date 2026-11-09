@@ -19,7 +19,7 @@ const stats=id=>app.evaluate(async({webContents},id)=>{
  app=await electron.launch({executablePath:process.env.MULTINEST_TEST_EXE||require('electron'),args:process.env.MULTINEST_TEST_EXE?['--user-data-dir='+profile]:[root],env});page=await app.firstWindow();await page.waitForSelector('.panel');
  await until(()=>app.evaluate(({webContents})=>webContents.getAllWebContents().filter(w=>/^http:/.test(w.getURL())&&!w.isLoading()).length===3),'fixture pages');
  for(const id of ['a','b','c']){
-   const settings={macros:[],targets:[{id:'point',name:'Point',enabled:true,interval:.15,point:{x:.5,y:.5,width:1000,height:800},action:id==='b'?{type:'key',key:'F1',mods:[]}:{type:'mouse',button:'left'}}]};
+   const settings={targets:[{id:'point',name:'Point',enabled:true,interval:.15,point:{x:.5,y:.5,width:1000,height:800},action:id==='b'?{type:'key',key:'F1',mods:[]}:{type:'mouse',button:'left'}}]};
    assert.equal((await page.evaluate(({id,settings})=>window.multiNest.automationSave(id,settings),{id,settings})).ok,true);
    assert.equal((await page.evaluate(id=>window.multiNest.automationStart(id,{kind:'clicker'}),id)).ok,true);
  }

@@ -48,8 +48,6 @@ contextBridge.exposeInMainWorld('multiNest', Object.freeze({
   automationStart: (id,request) => invoke('automation:start',id,request),
   automationStop: id => invoke('automation:stop',id),
   automationStopAll: () => invoke('automation:stop-all'),
-  automationImport: id => invoke('automation:import',id),
-  automationExport: (id,macroId) => invoke('automation:export',id,macroId),
   onAutomation: cb => subscribe('automation:state',cb),
   reload: id => invoke('view:reload', id),
   home: id => invoke('view:home', id),
