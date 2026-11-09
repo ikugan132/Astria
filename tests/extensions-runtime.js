@@ -127,6 +127,25 @@ function setup() {
   assert.ok(a.calls.some(c => c[0] === 'Input.dispatchKeyEvent' && c[1].type === 'keyUp'));
   assert.ok(a.calls.some(c => c[0] === 'event' && c.includes('debugger.onDetach')));
 
+  // Two extensions in one account control the same game tab together, as in Chrome (e.g. a macro and an auto-seller).
+  const m = setup(); await m.runtime.load('fixture'); m.runtime.addGame(m.game);
+  m.extensions.set(OTHER, { id: OTHER, url: `chrome-extension://${OTHER}/`, manifest: { name: 'Other', permissions: ['debugger'] } });
+  m.runtime.loaded.add(OTHER);
+  const otherEvent = { ...m.event, senderFrame: { url: `chrome-extension://${OTHER}/sw.js`, send: () => {} } };
+  const other = async (method, ...args) => { const r = await [...m.handlers.values()][0](otherEvent, OTHER, method, args); if (r.error) throw new Error(r.error); return r.result; };
+  await other('debugger.attach', { tabId: m.game.id }, '1.3');
+  await m.invoke('debugger.attach', { tabId: m.game.id }, '1.3');
+  await assert.rejects(m.invoke('debugger.attach', { tabId: m.game.id }, '1.3'), /already attached/i, 'the same extension attaching twice gets Chrome\'s message');
+  await m.invoke('debugger.sendCommand', { tabId: m.game.id }, 'Input.dispatchKeyEvent', { type: 'rawKeyDown', code: 'KeyM', key: 'm' });
+  await other('debugger.sendCommand', { tabId: m.game.id }, 'Input.dispatchMouseEvent', { type: 'mouseMoved', x: 1, y: 1 });
+  await m.invoke('debugger.detach', { tabId: m.game.id });
+  assert.equal(m.game.debugger.attached, true, 'one extension leaving keeps the other one\'s connection');
+  assert.ok(m.calls.some(c => c[0] === 'Input.dispatchKeyEvent' && c[1].type === 'keyUp' && c[1].code === 'KeyM'), 'its held key is released');
+  await other('debugger.sendCommand', { tabId: m.game.id }, 'Input.dispatchMouseEvent', { type: 'mouseMoved', x: 2, y: 2 });
+  await other('debugger.detach', { tabId: m.game.id });
+  assert.equal(m.game.debugger.attached, false, 'the last extension leaving detaches');
+  assert.equal(m.runtime.controlling, false);
+
   const c = setup(); await c.runtime.load('fixture'); c.runtime.addGame(c.game);
   c.game.debugger.attached = true;
   await assert.rejects(c.invoke('debugger.attach', { tabId: c.game.id }, '1.3'), /attached/i);

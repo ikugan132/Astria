@@ -90,8 +90,7 @@ class AccountExtensions {
       this.tabs.set(contents.id, contents);
       this._host.addTab(contents, this.window());
       contents.once('destroyed', () => {
-        const record = this.attached.get(id);
-        if (record) this._lost(record, 'target_closed');
+        for (const record of this._records(id)) this._lost(record, 'target_closed');
         this.tabs.delete(id);
       });
     }
@@ -214,17 +213,21 @@ class AccountExtensions {
   async _debugger(extensionId, method, args) {
     if (method === 'getTargets') return [...this.tabs.values()].filter(contents => !contents.isDestroyed()).map(contents => ({ id: String(contents.id), tabId: contents.id, type: 'page', url: contents.getURL(), title: contents.getTitle?.() || '', attached: contents.debugger.isAttached() }));
     const contents = this._target(args[0]);
-    let record = this.attached.get(contents.id);
+    const slot = `${contents.id}|${extensionId}`;
+    let record = this.attached.get(slot);
     if (method === 'attach') {
-      if (record || contents.debugger.isAttached()) throw new Error('This account tab already has an attached debugger.');
+      // Like Chrome, several extensions may control the same tab: they share Electron's one debugger connection.
+      // Chrome's wording, so extensions that detach and retry on "already attached" recover.
+      const shared = this._records(contents.id).length > 0;
+      if (record || contents.debugger.isAttached() && !shared) throw new Error(`Another debugger is already attached to the tab with id: ${contents.id}.`);
       if (args[1] !== undefined && typeof args[1] !== 'string') throw new Error('Invalid debugger protocol version.');
-      contents.debugger.attach(args[1] || '1.3');
-      record = { extensionId, contents, debug: contents.debugger, tabId: contents.id, attached: true, closing: false, keys: new Map(), buttons: new Map(), mouse: { x: 0, y: 0 }, tail: Promise.resolve() };
+      if (!contents.debugger.isAttached()) contents.debugger.attach(args[1] || '1.3');
+      record = { slot, extensionId, contents, debug: contents.debugger, tabId: contents.id, attached: true, closing: false, keys: new Map(), buttons: new Map(), mouse: { x: 0, y: 0 }, tail: Promise.resolve() };
       record.detachListener = (_event, reason) => this._lost(record, reason || 'target_closed');
       record.messageListener = (_event, name, params) => this._event(extensionId, 'debugger.onEvent', { tabId: contents.id }, name, params);
       contents.debugger.on('detach', record.detachListener);
       contents.debugger.on('message', record.messageListener);
-      this.attached.set(contents.id, record); this.onActivity();
+      this.attached.set(slot, record); this.onActivity();
       return;
     }
     if (!record || record.extensionId !== extensionId || !record.attached) throw new Error('Debugger is not attached by this extension owner.');
@@ -269,7 +272,7 @@ class AccountExtensions {
     record.attached = false;
     record.debug.removeListener('detach', record.detachListener);
     record.debug.removeListener('message', record.messageListener);
-    if (this.attached.get(record.tabId) === record) this.attached.delete(record.tabId);
+    if (this.attached.get(record.slot) === record) this.attached.delete(record.slot);
     this._event(record.extensionId, 'debugger.onDetach', { tabId: record.tabId }, reason);
     this.onActivity();
   }
@@ -291,12 +294,16 @@ class AccountExtensions {
           await bounded(debug.sendCommand('Input.dispatchKeyEvent', { ...params, type: 'keyUp', text: '', unmodifiedText: '', modifiers: 0 }), deadline - Date.now()).catch(() => {});
         }
       } finally {
-        try { if (record.attached && !record.contents.isDestroyed() && debug.isAttached()) debug.detach(); }
+        // The connection stays while another extension still controls this tab.
+        const shared = this._records(record.tabId).some(other => other !== record);
+        try { if (!shared && record.attached && !record.contents.isDestroyed() && debug.isAttached()) debug.detach(); }
         finally { this._lost(record, 'canceled_by_user'); }
       }
     })();
     return record.cleanup;
   }
+
+  _records(tabId) { return [...this.attached.values()].filter(record => record.tabId === tabId); }
 
   _options(id, tabId) {
     const extension = this._extension(id);
@@ -379,15 +386,14 @@ class AccountExtensions {
     });
     let closing = false;
     win.on('close', event => {
-      const record = this.attached.get(id);
-      if (!record || closing) return;
+      const records = this._records(id);
+      if (!records.length || closing) return;
       event.preventDefault(); closing = true;
-      this._detach(record).catch(() => {}).finally(() => { if (!win.isDestroyed()) win.destroy(); });
+      Promise.all(records.map(record => this._detach(record))).catch(() => {}).finally(() => { if (!win.isDestroyed()) win.destroy(); });
     });
     win.on('closed', () => {
       this.windows.delete(win);
-      const record = this.attached.get(id);
-      if (record) this._lost(record, 'target_closed');
+      for (const record of this._records(id)) this._lost(record, 'target_closed');
       this.tabs.delete(id);
     });
     return win;
