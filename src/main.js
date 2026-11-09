@@ -62,6 +62,8 @@ const closingViews = new Map();
 const initialLoads = new Map();
 const viewStatuses = new Map();
 const boundsForAccounts = new Map();
+// Docked extension pages: the open page per account and its slot inside the account panel.
+const dockActive = new Map(), dockBounds = new Map(), dockAttached = new Set();
 const idleTimers = new Map();
 const actions = new Map();
 const activityModes = new Set(['always', 'eco', 'adaptive', 'visible', 'suspended']);
@@ -208,7 +210,11 @@ function extensionContext(id){
   if(!extensionContexts.has(id)){
     const {AccountExtensions}=require('./extensions-runtime');
     const siteSession=accountSession(id);
-    extensionContexts.set(id,new AccountExtensions({session:siteSession,game:()=>views.get(id)?.webContents,window:()=>windowMain,onActivity:()=>refreshViews(),selectGame:()=>{const account=accountById(id);state.activeWorkspaceId=account.workspaceId;selectAccountState(id);requestAccountFocus();publish();},onWindow:child=>{
+    extensionContexts.set(id,new AccountExtensions({session:siteSession,game:()=>views.get(id)?.webContents,window:()=>windowMain,onActivity:()=>refreshViews(),onDock:(extensionId,view,event)=>{
+      if(event==='open')dockActive.set(id,extensionId);
+      else if(dockActive.get(id)===extensionId)dockActive.set(id,null);
+      sendDocks();refreshViews();
+    },selectGame:()=>{const account=accountById(id);state.activeWorkspaceId=account.workspaceId;selectAccountState(id);requestAccountFocus();publish();},onWindow:child=>{
       const view=views.get(id);if(view){view.popups.add(child);child.on('closed',()=>view.popups.delete(child));}
     }}));
   }
@@ -228,9 +234,46 @@ function prepareExtensions(id,contents){return extensionQueue(id,async()=>{
   }
 });}
 
+function dockState(){
+  const result={};
+  for(const [id,context] of extensionContexts){
+    if(!state.accounts.some(a=>a.id===id)||!context.docked.size)continue;
+    let entries=[];try{entries=extensionsStore.list(id);}catch{}
+    const open=[...context.docked.keys()].map(extensionId=>{const entry=entries.find(item=>item.extensionId===extensionId);return {extensionId,entryId:entry?.id||'',name:entry?.name||extensionId};});
+    result[id]={active:context.docked.has(dockActive.get(id))?dockActive.get(id):null,open};
+  }
+  return result;
+}
+function sendDocks(){if(windowMain&&!windowMain.isDestroyed())windowMain.webContents.send('extensions:docks',dockState());}
+// Docked pages sit above the interface in the slot the renderer reserved inside the account panel.
+function refreshDocks(windowVisible){
+  const root=windowMain.contentView,want=new Map();
+  if(windowVisible&&!overlayOpen)for(const [id,extensionId] of dockActive){
+    const view=extensionId&&extensionContexts.get(id)?.docked.get(extensionId),bounds=dockBounds.get(id);
+    if(view&&bounds&&!view.webContents.isDestroyed())want.set(view,bounds);
+  }
+  for(const view of dockAttached)if(!want.has(view)){try{root.removeChildView(view);}catch{/* already gone */}dockAttached.delete(view);}
+  for(const [view,bounds] of want){view.setBounds(bounds);if(!root.children.includes(view))root.addChildView(view);dockAttached.add(view);}
+}
+const extensionIcons=new Map();
+function extensionIcon(id,entry){
+  const key=`${id}|${entry.id}|${entry.version}`;
+  if(extensionIcons.has(key))return extensionIcons.get(key);
+  let icon='';
+  try{
+    const icons=entry.manifest?.icons||entry.manifest?.action?.default_icon||{};
+    const sizes=typeof icons==='string'?[[32,icons]]:Object.entries(icons).map(([size,file])=>[Number(size),file]).filter(([size,file])=>size>0&&typeof file==='string');
+    sizes.sort((a,b)=>(a[0]>=32?a[0]:1000+a[0])-(b[0]>=32?b[0]:1000+b[0]));
+    const folder=path.resolve(extensionsStore.folder(id,entry.id)),file=sizes[0]&&path.resolve(folder,sizes[0][1].replace(/^\/+/,''));
+    const type={'.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp','.svg':'image/svg+xml'}[path.extname(file||'').toLowerCase()];
+    if(file&&type&&file.startsWith(folder+path.sep)&&fs.statSync(file).size<=512*1024)icon=`data:${type};base64,${fs.readFileSync(file).toString('base64')}`;
+  }catch{/* letter fallback */}
+  extensionIcons.set(key,icon);return icon;
+}
+
 function listExtensions(id){
   accountById(id);const siteSession=session.fromPartition(`persist:multinest-${id}`);
-  return extensionsStore.list(id).map(entry=>({...entry,loaded:!!siteSession.extensions.getExtension(entry.extensionId),error:extensionErrors.get(id)?.get(entry.id)||''}));
+  return extensionsStore.list(id).map(entry=>({...entry,icon:extensionIcon(id,entry),loaded:!!siteSession.extensions.getExtension(entry.extensionId),error:extensionErrors.get(id)?.get(entry.id)||''}));
 }
 
 function selectDefaultAccount() {
@@ -588,6 +631,7 @@ function refreshViews() {
       }
     }
   }
+  refreshDocks(windowVisible);
   refreshFloatingView();
   focusRequestedAccount();
   scheduleMetrics();
@@ -1034,11 +1078,19 @@ function registerIPC() {
   listen('extensions:remove',async(id,entryId)=>{
     await extensionQueue(id,async()=>{accountById(id);const entry=extensionsStore.list(id).find(item=>item.id===entryId);if(!entry)throw Error(T('Extensão não encontrada.'));await extensionContexts.get(id)?.unload(entry.extensionId);extensionsStore.remove(id,entryId);extensionErrors.get(id)?.delete(entryId);});return {ok:true};
   });
-  listen('extensions:open',async(id,entryId)=>{
+  listen('extensions:open',async(id,entryId,mode)=>{
     await prepareExtensions(id,views.get(id)?.webContents);const entry=listExtensions(id).find(item=>item.id===entryId);
     if(!entry?.enabled||!entry.loaded)throw Error(T('Ative a extensão primeiro.'));
-    await extensionContext(id).open(entry.extensionId);return {ok:true};
+    await extensionContext(id).open(entry.extensionId,{window:mode==='window'});return {ok:true};
   });
+  listen('extensions:docks',()=>({ok:true,docks:dockState()}));
+  // Show an open docked page again, or collapse the dock (extensionId null) without closing the page.
+  listen('extensions:dock',(id,extensionId)=>{
+    accountById(id);const context=extensionContexts.get(id);
+    if(extensionId!==null&&!context?.docked.has(extensionId))throw Error(T('Extensão não encontrada.'));
+    dockActive.set(id,extensionId);sendDocks();refreshViews();return {ok:true};
+  });
+  listen('extensions:close',async(id,extensionId)=>{accountById(id);await extensionContexts.get(id)?.closeDock(extensionId);return {ok:true};});
   listen('automation:get',id=>({ok:true,...automation.get(id)}));
   listen('automation:save',async(id,settings)=>({ok:true,settings:await automation.save(id,settings)}));
   listen('automation:start',async(id,request)=>({ok:true,runtime:await automation.start(id,request)}));
@@ -1273,7 +1325,7 @@ function registerIPC() {
     const ids = new Set(accounts.filter(a=>!single||a.id===primary).map(a => a.id));
     // A late layout from the previous main must not raise and focus that old game.
     if(rects.length&&!rects.some(rect=>ids.has(rect?.id)))return;
-    boundsForAccounts.clear();
+    boundsForAccounts.clear(); dockBounds.clear();
     const [ww, wh] = windowMain.getContentSize();
     for (const rect of rects.slice(0, 300)) {
       if (!rect || typeof rect !== 'object') continue;
@@ -1283,7 +1335,7 @@ function registerIPC() {
       if (![x, y, width, height].every(Number.isFinite)) continue;
       if (x < 0 || y < 0 || width < 100 || height < 75) continue;
       if (x + width > ww + 2 || y + height > wh + 2) continue;
-      boundsForAccounts.set(rect.id, { x, y, width, height });
+      (rect.dock === true ? dockBounds : boundsForAccounts).set(rect.id, { x, y, width, height });
     }
     layoutReady = true;
     if (pendingAccountFocus) pendingAccountFocus.afterLayout = false;

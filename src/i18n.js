@@ -7,6 +7,7 @@
   else root.AstriaI18n = api;
 })(typeof window === 'object' ? window : globalThis, () => {
   const strings = {
+    'Extensões da conta':'Account extensions','Gerenciar extensões':'Manage extensions','Abrir em janela':'Open in a window','Fechar extensão':'Close extension','Largura da extensão':'Extension width','Arraste para ajustar a largura.':'Drag to adjust the width.',
     'Extensões':'Extensions','Extensões…':'Extensions…','Instalar extensão da pasta':'Install extension from folder','Extensão não encontrada.':'Extension not found.','Ative a extensão primeiro.':'Enable the extension first.',
     'IDs de contas conflitam neste Windows.':'Account IDs conflict on this Windows system.','A identidade da extensão mudou. Reinstale a pasta.':'The extension identity changed. Reinstall the folder.',
     'Arraste para reordenar':'Drag to reorder','Mover para cima':'Move up','Mover para baixo':'Move down',

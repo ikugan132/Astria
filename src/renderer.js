@@ -4,6 +4,39 @@ const tr = value => window.AstriaI18n.translate(value, state?.preferences.langua
 const h = (parts, ...values) => window.AstriaI18n.tag(parts, values, state?.preferences.language || 'en');
 const automationStates={};
 let state, statuses = {}, metrics = {}, queuedLayout = false, modalShowing = false, toastTimer, sidebarDrag;
+// Extensions docked inside the game panel, and the right rail listing the selected account's extensions.
+let docks = {}, rail = {account:null,list:[]}, railLoading = null, dockDrag;
+const dockKey = ext => 'astria.dock-width.'+ext;
+const clampDock = width => Math.round(Math.max(220,Math.min(1400,width)));
+function dockWidth(ext){try{const v=Number(localStorage.getItem(dockKey(ext)));if(v)return clampDock(v);}catch{/* default */}return 380;}
+function dockMarkup(a,item){
+  return h`<div class="dock-resizer" data-dock-resizer="${esc(a.id)}" role="separator" aria-orientation="vertical" aria-label="Largura da extensão" title="Arraste para ajustar a largura." tabindex="0"></div><aside class="ext-dock" data-dock-ext="${esc(item.extensionId)}" aria-label="${esc(item.name)}"><header class="dock-head"><span class="dock-title" title="${esc(item.name)}">${esc(item.name)}</span><button class="icon-button" data-action="dock-window" data-id="${esc(a.id)}" title="Abrir em janela" aria-label="Abrir em janela"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6m0-6-8 8M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg></button><button class="icon-button" data-action="dock-close" data-id="${esc(a.id)}" title="Fechar extensão" aria-label="Fechar extensão">×</button></header><div class="dock-body" data-dock="${esc(a.id)}"></div></aside>`;
+}
+function drawRail(){
+  const node=el('ext-rail'),id=state?.selectedAccountId,a=id&&account(id);
+  node.classList.toggle('hidden',!a);
+  if(!a){node.innerHTML='';return;}
+  const dock=docks[id],list=rail.account===id?rail.list:[];
+  node.innerHTML=h`<button class="rail-button rail-manage" data-action="extensions" data-id="${esc(id)}" title="Gerenciar extensões" aria-label="Gerenciar extensões">${glyph('extensions')}</button>`+list.map(e=>{
+    const open=!!dock?.open.some(o=>o.extensionId===e.extensionId),active=dock?.active===e.extensionId;
+    return `<button class="rail-button${open?' open':''}" data-action="rail-extension" data-id="${esc(e.id)}" data-extension="${esc(e.extensionId)}" aria-pressed="${active}" title="${esc(e.name)}${e.loaded?'':' · '+esc(tr('Não carregada'))}" aria-label="${esc(e.name)}">${e.icon?`<img src="${esc(e.icon)}" alt="">`:`<span class="rail-letter">${esc(e.name.slice(0,1).toUpperCase())}</span>`}</button>`;
+  }).join('');
+}
+async function loadRail(force=false){
+  const id=state?.selectedAccountId;
+  if(!id||!force&&(rail.account===id||railLoading===id)){drawRail();return;}
+  railLoading=id;drawRail();
+  const result=await api.extensionsList(id).catch(()=>null);
+  if(railLoading===id)railLoading=null;
+  if(state.selectedAccountId!==id)return;
+  rail={account:id,list:result?.ok?result.extensions.filter(e=>e.enabled):[]};drawRail();
+}
+async function railExtension(button){
+  const id=state.selectedAccountId,ext=button.dataset.extension,dock=docks[id];
+  if(dock?.active===ext)return call(api.extensionsDock,id,null);
+  if(dock?.open.some(o=>o.extensionId===ext))return call(api.extensionsDock,id,ext);
+  return call(api.extensionsOpen,id,button.dataset.id);
+}
 const { hsvToHex, hexToHsv } = window.AstriaColor;
 const el = id => document.getElementById(id);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -105,15 +138,17 @@ function render() {
     const status=statuses[a.id]||{}, paused=a.activity==='suspended';
     return h`<article class="panel ${a.id===state.selectedAccountId?'selected':''}" data-panel="${esc(a.id)}" data-account="${esc(a.id)}">
       <header class="panel-head"><button class="color-button" data-action="select" data-id="${esc(a.id)}" title="${esc(a.name)}" aria-label="${esc(a.name)}"><span class="color-dot"></span></button><button class="panel-title" data-action="select" data-id="${esc(a.id)}" title="${esc(a.name)} · ${esc(host(a.url))}">${esc(a.name)}</button><span class="panel-state ${status.error?'error':status.loading?'loading':''}" title="${esc(status.error||panelStatus(a.id))}">${status.error?'!':status.loading?'◌':''}</span><span class="panel-cost" data-cost="${esc(a.id)}"><span class="metric-ram"></span><span class="metric-cpu"></span></span>${workspace.layout==='floating'&&!paused&&workspace.floating?.length!==0&&accounts.some(other=>other.id!==a.id&&other.activity!=='suspended')?h`<button class="icon-button floating-swap" data-action="floating-swap" title="Trocar com conta flutuante · setas para mover" aria-label="Trocar com conta flutuante · setas para mover">${glyph('swap')}</button>`:''}${audioToggle(a)}<button class="icon-button automation-button" data-action="automation" data-id="${esc(a.id)}" title="Automação" aria-label="Automação" aria-pressed="${!!automationStates[a.id]?.running}">${glyph('target')}</button><button class="icon-button performance-button" data-action="performance" data-id="${esc(a.id)}" title="Desempenho" aria-label="Desempenho">${glyph('tune')}</button><button class="icon-button extensions-button" data-action="extensions" data-id="${esc(a.id)}" title="Extensões" aria-label="Extensões">${glyph('extensions')}</button><div class="activity-controls" role="group" aria-label="Atividade de ${esc(a.name)}">${Object.entries({always:[glyph('always'),tr('Sempre ativa · desempenho máximo')],eco:[glyph('eco'),a.activity==='eco'?tr('Economia de energia')+' · '+(a.ecoFPS||15)+' FPS':tr('Eco adaptativo')],visible:[glyph('visible'),tr('Ativa quando visível · descarrega após 5 minutos oculta')],suspended:[glyph('pause'),tr('Suspender · liberar RAM')]}).map(([mode,[icon,label]])=>`<button data-action="activity" data-mode="${mode==='eco'&&a.activity!=='eco'?'adaptive':mode}" data-id="${esc(a.id)}" aria-label="${label}" title="${label}" aria-pressed="${a.activity===mode||mode==='eco'&&a.activity==='adaptive'}">${icon}</button>`).join('')}</div><button class="icon-button ultra-button" data-action="ultra" data-id="${esc(a.id)}" title="Modo Ultra" aria-label="Modo Ultra" aria-pressed="${state.ultraAccountId===a.id}">${glyph('ultra')}</button><button class="icon-button layout-button" data-action="layout-menu" title="Layout dos painéis" aria-label="Layout dos painéis" aria-haspopup="menu">${layoutIcons[workspace.layout]}</button>${themeToggle()}<button class="icon-button reload-button" data-action="reload" data-id="${esc(a.id)}" title="Atualizar" aria-label="Atualizar ${esc(a.name)}">${glyph('reload')}</button><button class="icon-button" data-action="account-menu" data-id="${esc(a.id)}" title="Opções da conta" aria-label="Opções de ${esc(a.name)}" aria-haspopup="menu">${glyph('menu')}</button></header>
-      <div class="panel-body" ${paused?'':`data-slot="${esc(a.id)}"`}>${paused?h`<div class="panel-placeholder"><span class="sleep-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="5"/><path d="M9 8v8m6-8v8"/></svg></span><strong>${esc(a.name)} está suspensa</strong><p>A página foi descarregada para liberar RAM. Retomar abre o jogo com o perfil salvo.</p><button class="secondary" data-action="resume" data-id="${esc(a.id)}">Retomar conta</button></div>`:h`<div class="panel-placeholder">Abrindo ${esc(a.name)}…</div>`}</div>
+      <div class="panel-main"><div class="panel-body" ${paused?'':`data-slot="${esc(a.id)}"`}>${paused?h`<div class="panel-placeholder"><span class="sleep-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="5"/><path d="M9 8v8m6-8v8"/></svg></span><strong>${esc(a.name)} está suspensa</strong><p>A página foi descarregada para liberar RAM. Retomar abre o jogo com o perfil salvo.</p><button class="secondary" data-action="resume" data-id="${esc(a.id)}">Retomar conta</button></div>`:h`<div class="panel-placeholder">Abrindo ${esc(a.name)}…</div>`}</div>${(()=>{const dock=docks[a.id],item=!paused&&dock?.active&&dock.open.find(o=>o.extensionId===dock.active);return item?dockMarkup(a,item):'';})()}</div>
     </article>`;
   }).join('');
   document.querySelectorAll('.panel[data-account]').forEach(node=>node.style.setProperty('--account-color',account(node.dataset.account).color));
+  document.querySelectorAll('.ext-dock[data-dock-ext]').forEach(node=>{node.style.width=dockWidth(node.dataset.dockExt)+'px';});
+  loadRail();
   updateCosts();
   scheduleLayout();
 }
 function scheduleLayout() {
-  if(sidebarDrag)return;
+  if(sidebarDrag||dockDrag)return;
   if(queuedLayout) return; queuedLayout=true;
   let sent=false;
   const send=()=>{
@@ -124,6 +159,11 @@ function scheduleLayout() {
       const r=node.getBoundingClientRect(); const x=Math.max(r.left,viewport.left), y=Math.max(r.top,viewport.top);
       return {id:node.dataset.slot,x,y,width:Math.min(r.right,viewport.right)-x,height:Math.min(r.bottom,viewport.bottom)-y};
     }).filter(r=>r.width>=100&&r.height>=75);
+    for(const node of document.querySelectorAll('[data-dock]')){
+      const r=node.getBoundingClientRect(),x=Math.max(r.left,viewport.left),y=Math.max(r.top,viewport.top);
+      const rect={id:node.dataset.dock,dock:true,x,y,width:Math.min(r.right,viewport.right)-x,height:Math.min(r.bottom,viewport.bottom)-y};
+      if(rect.width>=100&&rect.height>=75)rects.push(rect);
+    }
     api.layout(rects);
   };
   // Covered windows may receive no animation frames, including after an update.
@@ -140,6 +180,7 @@ function modal(markup, ready) {
 }
 function closeModal() {
   const root=el('modal-root'); root.classList.add('hidden'); root.innerHTML=''; modalShowing=false; api.setOverlay(false); scheduleLayout();
+  loadRail(true);
 }
 
 function openExtensions(a){if(a)window.AstriaExtensionsUI.open({account:a,api,modal,closeModal,tr,toast,esc});}
@@ -280,6 +321,33 @@ resizer.addEventListener('pointerdown',e=>{
 });
 document.addEventListener('pointermove',e=>{
   if(sidebarDrag)sidebarDrag.width=applySidebar(sidebarDrag.start+e.clientX-sidebarDrag.x);
+  if(dockDrag){dockDrag.width=clampDock(dockDrag.start-(e.clientX-dockDrag.x));dockDrag.node.style.width=dockDrag.width+'px';}
+});
+// Dragging hides the game and extension surfaces, like the sidebar resizer, so the pointer stays on the interface.
+document.addEventListener('pointerdown',e=>{
+  const handle=e.target.closest('[data-dock-resizer]');if(!handle||e.button!==0||modalShowing)return;
+  const node=handle.nextElementSibling;if(!node)return;
+  e.preventDefault();try{handle.setPointerCapture(e.pointerId);}catch{/* document fallback */}
+  const start=node.getBoundingClientRect().width;
+  dockDrag={x:e.clientX,start,width:start,node,ext:node.dataset.dockExt};
+  document.documentElement.classList.add('resizing');api.setOverlay(true);
+});
+function finishDockDrag(cancel=false){
+  if(!dockDrag)return;const drag=dockDrag;dockDrag=undefined;
+  document.documentElement.classList.remove('resizing');
+  if(cancel)drag.node.style.width=drag.start+'px';
+  else{const width=Math.round(drag.node.getBoundingClientRect().width);try{localStorage.setItem(dockKey(drag.ext),String(width));}catch{/* not saved */}}
+  api.setOverlay(false);scheduleLayout();
+}
+document.addEventListener('pointerup',()=>finishDockDrag());
+document.addEventListener('pointercancel',()=>finishDockDrag(true));
+document.addEventListener('keydown',e=>{
+  const handle=e.target.closest?.('[data-dock-resizer]');if(!handle)return;
+  const node=handle.nextElementSibling,width=node.getBoundingClientRect().width;
+  const next={ArrowLeft:width+(e.shiftKey?64:16),ArrowRight:width-(e.shiftKey?64:16)}[e.key];
+  if(next===undefined)return;e.preventDefault();
+  node.style.width=clampDock(next)+'px';try{localStorage.setItem(dockKey(node.dataset.dockExt),String(Math.round(node.getBoundingClientRect().width)));}catch{/* not saved */}
+  scheduleLayout();
 });
 async function finishSidebarDrag(cancel=false){
   if(!sidebarDrag)return;
@@ -300,7 +368,7 @@ resizer.addEventListener('keydown',e=>{
 });
 document.body.addEventListener('click',e=>{
   const b=e.target.closest('[data-action]');if(!b||!state)return;const id=b.dataset.id;
-  const actions={extensions:()=>openExtensions(account(id)),automation:()=>openAutomation(account(id)),'floating-swap':()=>call(api.floatingSwap),workspace:()=>call(api.workspaceSelect,id),select:()=>call(api.accountSelect,id),'add-account':()=>accountForm(),reload:()=>call(api.reload,id),mute:()=>call(api.mute,id),ultra:()=>call(api.ultra,id),performance:()=>performanceHelp(id),resume:()=>call(api.accountActivity,id,'visible'),activity:()=>call(api.accountActivity,id,b.dataset.mode),theme:()=>call(api.theme,state.preferences.theme==='dark'?'light':'dark'),'layout-menu':()=>{const r=b.getBoundingClientRect();call(api.layoutMenu,{x:r.left,y:r.bottom});},'account-menu':()=>{const r=b.getBoundingClientRect();menuFor(id,{x:r.right,y:r.bottom});}};
+  const actions={extensions:()=>openExtensions(account(id)),automation:()=>openAutomation(account(id)),'floating-swap':()=>call(api.floatingSwap),workspace:()=>call(api.workspaceSelect,id),select:()=>call(api.accountSelect,id),'add-account':()=>accountForm(),reload:()=>call(api.reload,id),mute:()=>call(api.mute,id),ultra:()=>call(api.ultra,id),performance:()=>performanceHelp(id),resume:()=>call(api.accountActivity,id,'visible'),activity:()=>call(api.accountActivity,id,b.dataset.mode),theme:()=>call(api.theme,state.preferences.theme==='dark'?'light':'dark'),'layout-menu':()=>{const r=b.getBoundingClientRect();call(api.layoutMenu,{x:r.left,y:r.bottom});},'account-menu':()=>{const r=b.getBoundingClientRect();menuFor(id,{x:r.right,y:r.bottom});},'rail-extension':()=>railExtension(b),'dock-close':()=>docks[id]?.active&&call(api.extensionsClose,id,docks[id].active),'dock-window':()=>{const item=docks[id]?.open.find(o=>o.extensionId===docks[id].active);if(item?.entryId)call(api.extensionsOpen,id,item.entryId,'window');}};
   actions[b.dataset.action]?.();
 });
 document.body.addEventListener('contextmenu',e=>{
@@ -309,6 +377,7 @@ document.body.addEventListener('contextmenu',e=>{
 document.addEventListener('keydown',e=>{
   if(!modalShowing&&e.target.closest('[data-action="floating-swap"]')){const delta={ArrowLeft:[-16,0],ArrowRight:[16,0],ArrowUp:[0,-16],ArrowDown:[0,16]}[e.key];if(delta){e.preventDefault();call(api.floatingStep,...delta);return;}}
   if(e.key==='Escape'&&sidebarDrag){finishSidebarDrag(true);return;}
+  if(e.key==='Escape'&&dockDrag){finishDockDrag(true);return;}
   if(e.key==='Escape'&&modalShowing){closeModal();return;}
   if(modalShowing){
     if(e.key==='Tab'){const nodes=[...el('modal-root').querySelectorAll('input:not(:disabled),select:not(:disabled),button:not(:disabled),[tabindex="0"]')];const first=nodes[0],last=nodes[nodes.length-1];if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}}
@@ -319,6 +388,8 @@ window.addEventListener('resize',scheduleLayout);
 el('content').addEventListener('scroll',scheduleLayout,{passive:true});
 api.onResize(scheduleLayout);
 api.onState(next=>{state=next;render();});
+api.onDocks(next=>{docks=next||{};if(state)render();});
+api.extensionsDocks().then(r=>{if(r?.ok){docks=r.docks;if(state)render();}}).catch(()=>{});
 api.onStatus(event=>{
   statuses[event.id]=event;
   const node=document.querySelector(`[data-panel="${event.id}"] .panel-state`);

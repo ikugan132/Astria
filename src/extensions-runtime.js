@@ -17,11 +17,13 @@ const bounded = async (promise, milliseconds) => {
 };
 
 class AccountExtensions {
-  constructor({ session, game, window, onActivity, onWindow, selectGame, electron }) {
+  constructor({ session, game, window, onActivity, onWindow, onDock, selectGame, electron }) {
     if (sessions.has(session)) throw new Error('An extension runtime already exists for this account session.');
     this.session = session; this.game = game; this.window = window;
     this.onActivity = onActivity || (() => {}); this.onWindow = onWindow || (() => {});
     this.selectGame = selectGame || (() => {});
+    // onDock(extensionId, view|null, event): the host places docked extension pages inside the account window.
+    this.onDock = onDock || null; this.docked = new Map();
     this.electron = electron || require('electron');
     this.tabs = new Map(); this.windows = new Set(); this.panels = new Map(); this.captureGrants = new Map(); this.unloading = new Map();
     this.gameTabs = new WeakSet();
@@ -104,6 +106,7 @@ class AccountExtensions {
       await Promise.all([...this.attached.values()].filter(record => record.extensionId === extensionId).map(record => this._detach(record)));
       const panel = this.panels.get(extensionId);
       if (panel && !panel.isDestroyed()) panel.destroy();
+      this._destroyDock(extensionId);
       for (const win of this.windows) if (!win.isDestroyed() && extensionOrigin(win.webContents.getURL()) === extensionId) win.destroy();
       this.panels.delete(extensionId);
       this.captureGrants.delete(extensionId);
@@ -118,6 +121,7 @@ class AccountExtensions {
   async dispose() {
     await Promise.all([...this.loaded].map(id => this.unload(id)));
     for (const win of this.windows) if (!win.isDestroyed()) win.destroy();
+    for (const id of [...this.docked.keys()]) this._destroyDock(id);
     for (const contents of this.tabs.values()) if (!contents.isDestroyed()) this._host.removeTab(contents);
     this.tabs.clear();
   }
@@ -338,13 +342,13 @@ class AccountExtensions {
     throw new Error('Unsupported side panel API.');
   }
 
-  async open(extensionId) {
+  async open(extensionId, { window: separate = false } = {}) {
     const extension = this._extension(extensionId), manifest = extension.manifest;
     const game = this.game();
     if (manifest.permissions?.includes('activeTab') && game && !game.isDestroyed() && /^https?:\/\//i.test(game.getURL())) this.captureGrants.set(extensionId, { tabId: game.id, origin: new URL(game.getURL()).origin });
     const panel = this._options(extensionId, this.game()?.id);
     const page = this.panelBehaviors.get(extensionId) !== false && panel.enabled && panel.path || manifest.action?.default_popup || manifest.browser_action?.default_popup || manifest.options_ui?.page || manifest.options_page;
-    if (page) return this._openPanel(extensionId, page);
+    if (page) return this.onDock && !separate ? this._openDock(extensionId, page) : this._openPanel(extensionId, page);
     if (!game || game.isDestroyed()) throw new Error('The account game tab is unavailable.');
     // shortcut: the pinned compatibility library has no public action-click method; replace when it adds one.
     this._host.ctx.router.sendEvent(extensionId, 'browserAction.onClicked', { id: game.id, windowId: this.window().id, active: true, url: game.getURL(), title: game.getTitle?.() || '' });
@@ -352,6 +356,7 @@ class AccountExtensions {
 
   async _openPanel(id, page) {
     const url = this._extensionPage(id, page);
+    if (this.docked.has(id)) await this.closeDock(id);
     let win = this.panels.get(id);
     if (!win || win.isDestroyed()) {
       win = this._newWindow({ title: this._extension(id).manifest.name, width: 1050, height: 780 });
@@ -371,12 +376,52 @@ class AccountExtensions {
     this._host.ctx.store.lastFocusedWindowId = this.window().id;
   }
 
-  _newWindow(details) {
-    const dimension = (value, fallback) => Number.isFinite(value) ? Math.max(200, Math.min(4096, Math.round(value))) : fallback;
-    const win = new this.electron.BrowserWindow({ parent: this.window(), title: details.title || 'Extension', width: dimension(details.width, 960), height: dimension(details.height, 760), show: false,
-      webPreferences: { session: this.session, sandbox: true, contextIsolation: true, nodeIntegration: false, spellcheck: false } });
-    const contents = win.webContents, id = contents.id;
-    this.windows.add(win); this.onWindow(win);
+  async _openDock(id, page) {
+    const url = this._extensionPage(id, page);
+    const panel = this.panels.get(id);
+    if (panel && !panel.isDestroyed()) panel.close();
+    let view = this.docked.get(id);
+    if (!view || view.webContents.isDestroyed()) {
+      view = new this.electron.WebContentsView({ webPreferences: { session: this.session, sandbox: true, contextIsolation: true, nodeIntegration: false, spellcheck: false } });
+      const contents = view.webContents, contentsId = contents.id;
+      this._guardContents(contents);
+      // A docked page keeps working while it is collapsed or the account is in the background.
+      contents.setBackgroundThrottling(false);
+      this.docked.set(id, view);
+      // window.close() in a docked page only collapses the dock, as closing a Chrome popup returns to the page.
+      contents.on('close', () => { if (this.docked.get(id) === view) this.onDock(id, view, 'collapse'); });
+      contents.once('destroyed', () => {
+        for (const record of this._records(contentsId)) this._lost(record, 'target_closed');
+        this.tabs.delete(contentsId);
+        if (this.docked.get(id) !== view) return;
+        this.docked.delete(id);
+        this.onDock(id, null, 'closed');
+      });
+    }
+    if (view.webContents.getURL() !== url) await view.webContents.loadURL(url);
+    this.onDock(id, view, 'open');
+    const game = this.game();
+    if (game && !game.isDestroyed()) this._host.selectTab(game);
+    this._host.ctx.store.lastFocusedWindowId = this.window().id;
+  }
+
+  // Closing a docked page releases its debugger sessions, like closing its window.
+  async closeDock(id) {
+    const view = this.docked.get(id);
+    if (!view) return;
+    await Promise.all([...this.attached.values()].filter(record => record.extensionId === id).map(record => this._detach(record))).catch(() => {});
+    this._destroyDock(id);
+  }
+
+  _destroyDock(id) {
+    const view = this.docked.get(id);
+    if (!view) return;
+    this.docked.delete(id);
+    if (!view.webContents.isDestroyed()) view.webContents.close();
+    this.onDock?.(id, null, 'closed');
+  }
+
+  _guardContents(contents) {
     const guard = (event, url) => { try { this._url(url); } catch { event.preventDefault(); } };
     contents.on('will-navigate', guard); contents.on('will-redirect', guard);
     contents.on('will-attach-webview', event => event.preventDefault());
@@ -384,6 +429,15 @@ class AccountExtensions {
       try { this._url(url); this._createWindow({ url }, true).catch(() => {}); } catch {}
       return { action: 'deny' };
     });
+  }
+
+  _newWindow(details) {
+    const dimension = (value, fallback) => Number.isFinite(value) ? Math.max(200, Math.min(4096, Math.round(value))) : fallback;
+    const win = new this.electron.BrowserWindow({ parent: this.window(), title: details.title || 'Extension', width: dimension(details.width, 960), height: dimension(details.height, 760), show: false,
+      webPreferences: { session: this.session, sandbox: true, contextIsolation: true, nodeIntegration: false, spellcheck: false } });
+    const contents = win.webContents, id = contents.id;
+    this.windows.add(win); this.onWindow(win);
+    this._guardContents(contents);
     let closing = false;
     win.on('close', event => {
       const records = this._records(id);
@@ -437,11 +491,12 @@ class AccountExtensions {
       }
       return original(event, ...args);
     });
-    // Chrome side panels live inside the browser window; Astria shows them as their own window, so a focused panel counts as its account window.
+    // Chrome side panels live inside the browser window; a focused docked page or panel window counts as its account window.
     const focusView = details => {
       const main = this.window();
       if (!details || typeof details !== 'object' || !main || details.id !== main.id || details.focused) return details;
-      return [...this.panels.values()].some(win => !win.isDestroyed() && win.isFocused()) ? { ...details, focused: true } : details;
+      const focused = [...this.panels.values()].some(win => !win.isDestroyed() && win.isFocused()) || [...this.docked.values()].some(view => !view.webContents.isDestroyed() && view.webContents.isFocused());
+      return focused ? { ...details, focused: true } : details;
     };
     for (const name of ['windows.get', 'windows.getAll', 'windows.getCurrent', 'windows.getLastFocused']) wrap(name, async (event, args, original) => {
       this._host.ctx.store.windowDetailsCache.clear();
