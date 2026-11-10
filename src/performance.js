@@ -18,4 +18,15 @@ function resolutionBounds(preset, panel) {
   const width = Math.round(size.width * scale), height = Math.round(size.height * scale);
   return {x: panel.x + Math.floor((panel.width-width)/2), y: panel.y + Math.floor((panel.height-height)/2), width, height};
 }
-module.exports = { resolutions, frameBudget, resolutionBounds };
+// A crashed or navigating page has no render frame: Electron throws on mainFrame then.
+// Returns false so the caller sends the limit again once the page is back.
+function sendFrameLimit(contents, fps) {
+  try {
+    for (const frame of contents.mainFrame.framesInSubtree) {
+      if (!frame.isDestroyed()) frame.send('astria:frame-limit', fps);
+    }
+    return true;
+  } catch { return false; }
+}
+
+module.exports = { resolutions, frameBudget, resolutionBounds, sendFrameLimit };

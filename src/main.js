@@ -8,7 +8,7 @@ const { isInterfaceURL } = require('./trusted-ui');
 const { pageMetrics } = require('./metrics');
 const { planViewLoads } = require('./view-loads');
 const { closePage } = require('./view-close');
-const { frameBudget, resolutions, resolutionBounds } = require('./performance');
+const { frameBudget, resolutions, resolutionBounds, sendFrameLimit } = require('./performance');
 const { collectPageMemory } = require('./memory-cleanup');
 const { Automation } = require('./automation');
 const { ExtensionsStore } = require('./extensions-store');
@@ -327,10 +327,7 @@ function setFrameLimit(contents, account, force = false) {
     contents.astriaResting = resting;
   }
   if (!force && contents.astriaFPS === fps) return;
-  contents.astriaFPS = fps;
-  for (const frame of contents.mainFrame.framesInSubtree) {
-    if (!frame.isDestroyed()) frame.send('astria:frame-limit', fps);
-  }
+  contents.astriaFPS = sendFrameLimit(contents, fps) ? fps : undefined;
 }
 
 function applyResolution(view, account, panel = view.getBounds()) {

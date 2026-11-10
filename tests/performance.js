@@ -1,6 +1,6 @@
 'use strict';
 const assert = require('node:assert/strict');
-const { frameBudget, resolutionBounds } = require('../src/performance');
+const { frameBudget, resolutionBounds, sendFrameLimit } = require('../src/performance');
 const adaptive = { activity: 'adaptive', ecoFPS: 15 };
 assert.equal(frameBudget(adaptive, { active: true, loaded: 8 }), 60);
 assert.equal(frameBudget({...adaptive,ecoFPS:30}, {loaded:2}), 15, 'adaptive secondary ceiling is 15 even with a larger manual limit');
@@ -16,4 +16,8 @@ assert.equal(resolutionBounds('invalid', {x:0,y:0,width:100,height:100}), null);
 assert.equal(resolutionBounds('__proto__', {x:0,y:0,width:100,height:100}), null);
 assert.deepEqual(resolutionBounds({width:1280,height:720},{x:10,y:30,width:1000,height:800}),{x:10,y:148,width:1000,height:563});
 for(const width of [0,-1,NaN,Infinity])assert.equal(resolutionBounds({width,height:720},{x:0,y:0,width:100,height:100}),null);
+// A crashed page throws on mainFrame; the limit is skipped instead of taking the app down.
+const sent=[],live={isDestroyed:()=>false,send:(channel,fps)=>sent.push([channel,fps])},dead={isDestroyed:()=>true,send(){throw Error('dead frame');}};
+assert.equal(sendFrameLimit({mainFrame:{framesInSubtree:[live,dead]}},15),true);assert.deepEqual(sent,[['astria:frame-limit',15]]);
+assert.equal(sendFrameLimit({get mainFrame(){throw Error('Render frame was disposed before WebFrameMain could be accessed');}},15),false);
 console.log('PASS: adaptive/legacy/rest/Ultra frame budgets and aspect-ratio fit');
