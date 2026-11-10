@@ -8,7 +8,6 @@
 .extension-item summary{cursor:pointer}.extension-item ul{padding-left:20px;line-height:1.6}
 .extension-item .automation-buttons{margin-top:12px}
 .extension-notice,.extension-error{font-size:12px;line-height:1.6;overflow-wrap:anywhere;color:var(--text)}
-.extension-actions{flex-wrap:wrap}.extensions-button svg{width:14px;height:14px}
+.extension-actions{flex-wrap:wrap}
 .account-link.account-dragging{opacity:.45}.account-link.drop-before:before,.account-link.drop-after:after{content:'';position:absolute;left:5px;right:5px;height:2px;background:var(--accent);pointer-events:none}.account-link.drop-before:before{top:0}.account-link.drop-after:after{bottom:0}
-@container(max-width:500px){.panel-head .extensions-button{display:none}}
 @media(max-width:500px){.extension-heading{align-items:flex-start;flex-wrap:wrap}.extension-actions{justify-content:flex-start}}

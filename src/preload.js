@@ -53,7 +53,7 @@ contextBridge.exposeInMainWorld('multiNest', Object.freeze({
   automationStop: id => invoke('automation:stop',id),
   automationStopAll: () => invoke('automation:stop-all'),
   onAutomation: cb => subscribe('automation:state',cb),
-  reload: id => invoke('view:reload', id),
+  reload: id => invoke('view:reload', id, true), // the panel button is a full reload: nothing from the cache
   home: id => invoke('view:home', id),
   mute: id => invoke('view:mute', id),
   zoom: (id, delta) => invoke('view:zoom', id, delta),
