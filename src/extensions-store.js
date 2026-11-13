@@ -210,7 +210,8 @@ class ExtensionsStore {
         ids.add(record.id);
         extensionIds.add(record.extensionId);
       }
-      return records.map(({ id, extensionId, name, version, enabled, manifest }) => ({ id, extensionId, name, version, enabled, manifest }));
+      // source: the folder the copy came from, so it can be updated without choosing it again.
+      return records.map(({ id, extensionId, name, version, enabled, manifest, source }) => ({ id, extensionId, name, version, enabled, manifest, ...(typeof source === 'string' && source ? { source } : {}) }));
     } catch (error) {
       if (error.code === 'ENOENT') return [];
       throw new Error(`Extension metadata could not be read: ${error.message}`, { cause: error });
@@ -239,8 +240,9 @@ class ExtensionsStore {
     }
   }
 
-  install(accountId, sourceFolder) {
-    const records = this.list(accountId);
+  // Reads and validates a source folder. A manifest without a key takes fallbackKey (the
+  // installed copy's key on update) or a new one, so the extension keeps one identity.
+  _source(sourceFolder, fallbackKey) {
     if (typeof sourceFolder !== 'string' || !sourceFolder.trim()) throw new Error('Extension source folder is required.');
     const source = checked(path.resolve(sourceFolder), true);
     if (inside(source, this.directory) || inside(this.directory, source)) throw new Error('Extension source and store folders must not overlap.');
@@ -249,38 +251,96 @@ class ExtensionsStore {
     catch (error) { throw new Error(`Invalid extension manifest: ${error.message}`, { cause: error }); }
     const files = scan(source);
     if (manifest.key === undefined) {
-      const { publicKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
-      manifest.key = publicKey.export({ type: 'spki', format: 'der' }).toString('base64');
+      manifest.key = fallbackKey || crypto.generateKeyPairSync('rsa', { modulusLength: 2048 }).publicKey.export({ type: 'spki', format: 'der' }).toString('base64');
     }
     const manifestContent = `${JSON.stringify(manifest, null, 2)}\n`;
     if (Buffer.byteLength(manifestContent) > MAX_MANIFEST) throw new Error('Copied extension manifest exceeds the 1 MiB size limit.');
     const copiedBytes = files.reduce((total, file) => total + (file.relative === 'manifest.json' ? Buffer.byteLength(manifestContent) : file.stat.size), 0);
     if (copiedBytes > MAX_BYTES) throw new Error('Copied extension exceeds the 100 MiB maximum size.');
-    const record = { id: crypto.randomUUID(), extensionId: extensionId(manifest), name: manifest.name, version: manifest.version, enabled: true, manifest };
+    return { source, manifest, manifestContent, files };
+  }
+
+  _stage(staging, { files, manifestContent }) {
+    fs.mkdirSync(staging);
+    for (const file of files) {
+      const target = path.join(staging, file.relative);
+      checked(path.dirname(target), true, true);
+      copyFile(file, target);
+    }
+    fs.writeFileSync(path.join(staging, 'manifest.json'), manifestContent, 'utf8');
+  }
+
+  _discard(account, folder, cause) {
+    if (!fs.existsSync(folder)) return;
+    if (!inside(account, folder)) throw new Error('Extension cleanup path escapes its account.', { cause });
+    checked(folder, true);
+    fs.rmSync(folder, { recursive: true });
+  }
+
+  // The installed copy of the extension in sourceFolder, or null. Only a manifest with its own key can match.
+  match(accountId, sourceFolder) {
+    const records = this.list(accountId);
+    try {
+      const manifest = JSON.parse(readFile(path.join(checked(path.resolve(sourceFolder), true), 'manifest.json'), MAX_MANIFEST));
+      if (typeof manifest?.key !== 'string') return null;
+      const id = extensionId(manifest);
+      return records.find(record => record.extensionId === id) || null;
+    } catch { return null; }
+  }
+
+  install(accountId, sourceFolder) {
+    const records = this.list(accountId);
+    const prepared = this._source(sourceFolder);
+    const { manifest } = prepared;
+    const record = { id: crypto.randomUUID(), extensionId: extensionId(manifest), name: manifest.name, version: manifest.version, enabled: true, manifest, source: prepared.source };
     if (records.some(value => value.extensionId === record.extensionId)) throw new Error('This extension is already installed in this account.');
     const account = this._account(accountId);
     const staging = path.join(account, `.install-${record.id}`);
     const destination = path.join(account, record.id);
     let owned = staging;
-    fs.mkdirSync(staging);
     try {
-      for (const file of files) {
-        const target = path.join(staging, file.relative);
-        checked(path.dirname(target), true, true);
-        copyFile(file, target);
-      }
-      fs.writeFileSync(path.join(staging, 'manifest.json'), manifestContent, 'utf8');
+      this._stage(staging, prepared);
       checked(account, true);
       fs.renameSync(staging, destination);
       owned = destination;
       this._write(accountId, [...records, record]);
       return record;
     } catch (error) {
-      if (!inside(account, owned)) throw new Error('Extension cleanup path escapes its account.', { cause: error });
-      checked(owned, true);
-      fs.rmSync(owned, { recursive: true });
+      this._discard(account, owned, error);
       throw error;
     }
+  }
+
+  // Replaces an installed copy with the current files of its source folder (or of sourceFolder,
+  // which then becomes its source). The copy keeps its ID, identity and enabled state.
+  update(accountId, id, sourceFolder) {
+    const { records, record } = this._record(accountId, id);
+    const from = sourceFolder || record.source;
+    if (!from) throw new Error('Extension source folder is required.');
+    const prepared = this._source(from, record.manifest.key);
+    const { manifest } = prepared;
+    if (extensionId(manifest) !== record.extensionId) throw new Error('This folder contains a different extension.');
+    const account = this._account(accountId);
+    const tag = crypto.randomUUID();
+    const staging = path.join(account, `.install-${tag}`), destination = path.join(account, id), previous = path.join(account, `.remove-${id}-${tag}`);
+    let moved = false, placed = false;
+    try {
+      this._stage(staging, prepared);
+      checked(account, true);
+      try { fs.renameSync(destination, previous); moved = true; }
+      catch (error) { if (error.code !== 'ENOENT') throw error; }
+      fs.renameSync(staging, destination);
+      placed = true;
+      Object.assign(record, { name: manifest.name, version: manifest.version, manifest, source: prepared.source });
+      this._write(accountId, records);
+    } catch (error) {
+      // Put the previous copy back; its record was never rewritten.
+      this._discard(account, placed ? destination : staging, error);
+      if (moved) fs.renameSync(previous, destination);
+      throw error;
+    }
+    if (moved) this._discard(account, previous);
+    return record;
   }
 
   _record(accountId, id) {

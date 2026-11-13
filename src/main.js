@@ -1065,8 +1065,24 @@ function registerIPC() {
   listen('extensions:install',async id=>{
     accountById(id);const result=await dialog.showOpenDialog(windowMain,{title:T('Instalar extensão da pasta'),properties:['openDirectory']});
     if(result.canceled||!result.filePaths?.[0])return {ok:true,cancelled:true};
-    await extensionQueue(id,()=>{accountById(id);extensionsStore.install(id,result.filePaths[0]);});
+    // Choosing the folder of an extension that is already installed updates that copy.
+    await extensionQueue(id,async()=>{accountById(id);const folder=result.filePaths[0],current=extensionsStore.match(id,folder);
+      if(!current)return extensionsStore.install(id,folder);
+      await extensionContexts.get(id)?.unload(current.extensionId);extensionsStore.update(id,current.id,folder);extensionErrors.get(id)?.delete(current.id);});
     await prepareExtensions(id,views.get(id)?.webContents);return {ok:true};
+  });
+  listen('extensions:update',async(id,entryId)=>{
+    accountById(id);const entry=extensionsStore.list(id).find(item=>item.id===entryId);if(!entry)throw Error(T('Extensão não encontrada.'));
+    // Updates from the folder it was installed from; asks once when that folder is unknown or gone.
+    let folder=entry.source&&fs.existsSync(path.join(entry.source,'manifest.json'))?entry.source:null;
+    if(!folder){
+      const result=await dialog.showOpenDialog(windowMain,{title:T('Escolha a pasta da extensão')+': '+entry.name,properties:['openDirectory']});
+      if(result.canceled||!result.filePaths?.[0])return {ok:true,cancelled:true};
+      folder=result.filePaths[0];
+    }
+    let version;
+    await extensionQueue(id,async()=>{accountById(id);await extensionContexts.get(id)?.unload(entry.extensionId);version=extensionsStore.update(id,entryId,folder).version;extensionErrors.get(id)?.delete(entryId);});
+    await prepareExtensions(id,views.get(id)?.webContents);return {ok:true,version};
   });
   listen('extensions:enable',async(id,entryId,enabled)=>{
     await extensionQueue(id,async()=>{accountById(id);const entry=extensionsStore.setEnabled(id,entryId,enabled);if(!enabled)await extensionContexts.get(id)?.unload(entry.extensionId);});

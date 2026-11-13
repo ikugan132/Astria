@@ -214,6 +214,32 @@ try {
   assert.equal(fs.readFileSync(path.join(external, 'keep.txt'), 'utf8'), 'untouched');
   assert.equal(portable.list('account-b')[0].id, other.id);
   assert.equal(fs.existsSync(fixedSource), true);
+  {
+  // Update: the copy takes the source folder's current files and keeps its ID, identity and enabled state.
+  const fresh = new ExtensionsStore({ directory: path.join(root, 'Updates') });
+  const live = fixture(), before = fresh.install('account-a', live);
+  assert.equal(fresh.list('account-a')[0].source, live, 'the source folder is remembered');
+  fresh.setEnabled('account-a', before.id, false);
+  fs.writeFileSync(path.join(live, 'manifest.json'), JSON.stringify({ ...readManifest(live), version: '2.0.0' }));
+  fs.writeFileSync(path.join(live, 'added.js'), 'new file'); fs.unlinkSync(path.join(live, 'worker.js'));
+  fs.writeFileSync(path.join(live, 'worker.js'), 'globalThis.started = 2;');
+  const after = fresh.update('account-a', before.id), copy = fresh.folder('account-a', before.id);
+  assert.deepEqual([after.id, after.extensionId, after.version, after.enabled], [before.id, before.extensionId, '2.0.0', false]);
+  assert.equal(readManifest(copy).key, before.manifest.key, 'a manifest without a key keeps the installed identity');
+  assert.equal(fs.readFileSync(path.join(copy, 'worker.js'), 'utf8'), 'globalThis.started = 2;');
+  assert.equal(fs.existsSync(path.join(copy, 'added.js')), true);
+  assert.deepEqual(fs.readdirSync(accountFolder(path.join(root, 'Updates'), 'account-a')).sort(), [before.id, 'extensions.json'].sort(), 'no staging or previous copy is left');
+  // Another folder can become the source; a different extension is refused and the copy survives.
+  const relocated = fixture({ version: '2.1.0' });
+  assert.equal(fresh.update('account-a', before.id, relocated).version, '2.1.0'); assert.equal(fresh.list('account-a')[0].source, relocated);
+  assert.throws(() => fresh.update('account-a', before.id, fixture({ key })), /different extension/);
+  fs.writeFileSync(path.join(relocated, 'manifest.json'), '{broken');
+  assert.throws(() => fresh.update('account-a', before.id), /Invalid extension manifest/);
+  assert.equal(fresh.list('account-a')[0].version, '2.1.0'); assert.equal(readManifest(fresh.folder('account-a', before.id)).version, '2.1.0');
+  // A keyed extension is recognised from its folder; a key-less one cannot be.
+  const keyed = fixture({ key }), installed = fresh.install('account-a', keyed);
+  assert.equal(fresh.match('account-a', keyed).id, installed.id); assert.equal(fresh.match('account-a', live), null);
+  }
   console.log('PASS: portable extension copies, stable Chromium identities, account isolation, metadata preservation and filesystem validation');
 } finally {
   // Every recursive cleanup target is the unique temporary tree created above.

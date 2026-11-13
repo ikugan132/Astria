@@ -23,6 +23,7 @@ contextBridge.exposeInMainWorld('multiNest', Object.freeze({
   accountOrder: (workspaceId,ids) => invoke('account:order',workspaceId,ids),
   extensionsList: id => invoke('extensions:list',id),
   extensionsInstall: id => invoke('extensions:install',id),
+  extensionsUpdate: (id,entryId) => invoke('extensions:update',id,entryId),
   extensionsEnable: (id,entryId,enabled) => invoke('extensions:enable',id,entryId,enabled),
   extensionsRemove: (id,entryId) => invoke('extensions:remove',id,entryId),
   extensionsOpen: (id,entryId,mode) => invoke('extensions:open',id,entryId,mode),
