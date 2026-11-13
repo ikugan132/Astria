@@ -218,7 +218,8 @@ try {
   // Update: the copy takes the source folder's current files and keeps its ID, identity and enabled state.
   const fresh = new ExtensionsStore({ directory: path.join(root, 'Updates') });
   const live = fixture(), before = fresh.install('account-a', live);
-  assert.equal(fresh.list('account-a')[0].source, live, 'the source folder is remembered');
+  // Compared as real paths: a temp folder can be spelled with a short 8.3 name.
+  assert.equal(fresh.list('account-a')[0].source, fs.realpathSync.native(live), 'the source folder is remembered');
   fresh.setEnabled('account-a', before.id, false);
   fs.writeFileSync(path.join(live, 'manifest.json'), JSON.stringify({ ...readManifest(live), version: '2.0.0' }));
   fs.writeFileSync(path.join(live, 'added.js'), 'new file'); fs.unlinkSync(path.join(live, 'worker.js'));
@@ -231,7 +232,7 @@ try {
   assert.deepEqual(fs.readdirSync(accountFolder(path.join(root, 'Updates'), 'account-a')).sort(), [before.id, 'extensions.json'].sort(), 'no staging or previous copy is left');
   // Another folder can become the source; a different extension is refused and the copy survives.
   const relocated = fixture({ version: '2.1.0' });
-  assert.equal(fresh.update('account-a', before.id, relocated).version, '2.1.0'); assert.equal(fresh.list('account-a')[0].source, relocated);
+  assert.equal(fresh.update('account-a', before.id, relocated).version, '2.1.0'); assert.equal(fresh.list('account-a')[0].source, fs.realpathSync.native(relocated));
   assert.throws(() => fresh.update('account-a', before.id, fixture({ key })), /different extension/);
   fs.writeFileSync(path.join(relocated, 'manifest.json'), '{broken');
   assert.throws(() => fresh.update('account-a', before.id), /Invalid extension manifest/);
